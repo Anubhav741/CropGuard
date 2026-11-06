@@ -9,3 +9,6 @@ UserSettings/
 .DS_Store
 *.csproj
 *.sln
+*.sln
+unity-game/unity-game.sln
+unity-game/ProjectSettings/Packages/com.unity.testtools.codecoverage/
