@@ -1,946 +1,1085 @@
-# AquaGuardian — DE Task 3: Analytics and SQL Validation Guide
+# AquaGuardian — Data Engineering Documentation
+## DE Task 3 — Complete Reference Guide
 
-**Project:** AquaGuardian (Groundwater Conservation Educational Game)  
-**Task:** DE Task 3 — Checkpoint 3 (Reviewed & Corrected)  
+**Project:** AquaGuardian – Development of an Educational Game on Groundwater Conservation  
+**Component:** Data Engineering (DE)  
 **Author:** Yash Kumar  
-**Target Audience:** Second-Year B.Tech CSE (Viva-Ready Reference)
+**Audience:** Second-Year B.Tech CSE — College Project Evaluation
 
 ---
 
-## PostgreSQL Execution Confirmation & Validation
+## Table of Contents
 
-All 21 analytical queries in this guide and in [`database/analytics.sql`](file:///Users/anubhavgupta/Desktop/groundwater-conservation-game/database/analytics.sql) were executed and validated directly on **PostgreSQL 18.6** against the `aquaguardian` database using the exact 4-table schema and sample seed records (`schema.sql` and `seed.sql`).
+1. [Project Overview](#1-project-overview)
+2. [Database Objectives](#2-database-objectives)
+3. [ER Diagram and Relationships](#3-er-diagram-and-relationships)
+4. [Table Descriptions](#4-table-descriptions)
+5. [Keys and Constraints](#5-keys-and-constraints)
+6. [Schema Explanation](#6-schema-explanation)
+7. [Seed Data Explanation](#7-seed-data-explanation)
+8. [DDL / DML / TCL / DCL Coverage](#8-ddl--dml--tcl--dcl-coverage)
+9. [Retrieval Queries](#9-retrieval-queries)
+10. [SQL Functions](#10-sql-functions)
+11. [GROUP BY, HAVING and CASE](#11-group-by-having-and-case)
+12. [Joins and Subqueries](#12-joins-and-subqueries)
+13. [Window Functions](#13-window-functions)
+14. [Normalization — 1NF to BCNF](#14-normalization--1nf-to-bcnf)
+15. [ACID and Transaction Handling](#15-acid-and-transaction-handling)
+16. [Analytics Queries and Interpretations](#16-analytics-queries-and-interpretations)
+17. [Execution Instructions](#17-execution-instructions)
+18. [Validation Results](#18-validation-results)
+19. [DE Syllabus Coverage Checklist](#19-de-syllabus-coverage-checklist)
 
-Every output table presented in this document reflects the **actual PostgreSQL query execution result** obtained from the live database.
+---
 
-### Command Used for Direct Execution
-```bash
-psql -U $(whoami) -d aquaguardian -f database/analytics.sql
+## 1. Project Overview
+
+AquaGuardian is a web-based and mobile-based educational game designed to teach players about groundwater conservation and management. Players choose scenarios — such as a village drought or a farmland irrigation crisis — and make decisions that affect the groundwater level of a simulated aquifer. The game tracks each session, records outcomes, and ranks players based on how much groundwater they conserve.
+
+The Data Engineering component designs and implements the relational database that stores all game data, writes queries to support reporting and analytics, and documents the database design according to academic standards.
+
+---
+
+## 2. Database Objectives
+
+The AquaGuardian database must:
+
+- Store registered player accounts securely.
+- Record all available game scenarios and their difficulty levels.
+- Track each gameplay session — when it started, which user played, which scenario was chosen, and whether the session was completed, abandoned, or is still ongoing.
+- Record the outcome of every completed session — the score, groundwater levels before and after, and water saved.
+- Support reporting queries such as leaderboards, completion statistics, groundwater recovery analysis, and player progress over time.
+- Demonstrate all SQL concepts required by the Data Engineering course syllabus.
+
+---
+
+## 3. ER Diagram and Relationships
+
 ```
-*Result: Executed successfully with exit code 0 and zero runtime errors.*
+users ||--o{ game_sessions : "plays"
+scenarios ||--o{ game_sessions : "is used in"
+game_sessions ||--o| game_results : "produces"
+```
 
----
+### Entities and Their Roles
 
-## Syllabus Concepts Coverage Matrix
+| Entity | Role |
+|---|---|
+| `users` | Registered players of the game |
+| `scenarios` | Conservation missions available to play |
+| `game_sessions` | One play-through — links a user to a scenario |
+| `game_results` | Outcome data for a completed session |
 
-The matrix below lists **only** the concepts that are genuinely demonstrated in `analytics.sql`:
+### Relationships
 
-| Syllabus Concept | Verified Query Demonstrations | Purpose & Context |
+| Relationship | Type | Explanation |
 |---|---|---|
-| **INNER JOIN** | `A.6`, `B.4`, `B.7`, `C.1`, `D.3`, `E.6` | Combines matching records across tables |
-| **LEFT JOIN** | `A.1`, `A.2`, `A.3`, `A.4`, `A.5`, `B.1`, `B.2`, `B.3`, `B.6`, `D.4`, `E.3`, `E.5`, `E.7` | Retains all left-table rows even without child records |
-| **GROUP BY** | `A.1`, `A.2`, `A.3`, `A.4`, `A.5`, `A.6`, `B.1`, `B.2`, `B.3`, `B.4`, `B.5`, `B.6`, `B.7`, `C.1`, `D.4`, `E.1`, `E.5`, `E.7` | Aggregates data into categories and buckets |
-| **HAVING** | `A.6`, `B.7` | Filters aggregated groups after `GROUP BY` |
-| **COUNT()** | `A.1`, `A.2`, `A.5`, `A.6`, `B.1`, `B.2`, `B.3`, `B.4`, `B.5`, `B.6`, `B.7`, `C.1`, `D.1`, `D.4`, `E.1`, `E.5`, `E.7` | Counts rows or non-NULL column instances |
-| **SUM()** | `A.4`, `A.5`, `A.6`, `C.1`, `D.1`, `D.4`, `E.7` | Computes cumulative totals |
-| **AVG()** | `A.3`, `A.5`, `B.2`, `B.3`, `B.4`, `B.7`, `D.1`, `D.2`, `D.4` | Calculates arithmetic means |
-| **MIN() & MAX()** | `B.4`, `D.1` | Discovers lowest and highest numeric values |
-| **CASE Statements** | `A.2`, `B.6`, `D.3`, `E.2`, `E.5`, `E.7` | Implements conditional branching logic |
-| **Scalar Subquery** | `E.1` | Computes overall session count for percentage denominator |
-| **Correlated Subquery (`NOT EXISTS`)** | `E.4` | Performs fast anti-filtering to locate inactive users |
-| **RANK()** | `C.1` | Ranks rows by score, leaving gaps on tied values |
-| **DENSE_RANK()** | `A.5`, `C.1` | Ranks rows consecutively without gaps on ties |
-| **LAG()** | `E.6` | Accesses preceding row data within a partition |
-| **LEAD()** | `E.6` | Accesses succeeding row data within a partition |
-| **NOW()** | `E.7` | Retrieves the current database timestamp |
-| **DATE_TRUNC()** | `E.7` | Truncates timestamps to start of the calendar month |
-| **TO_CHAR()** | `E.7` | Formats timestamps into readable strings |
-| **COALESCE()** | `A.3`, `A.4`, `A.5`, `B.2`, `B.3`, `D.4`, `E.2`, `E.3`, `E.7` | Substitutes `NULL` with friendly default values |
-| **ROUND()** | `A.3`, `A.5`, `B.2`, `B.3`, `B.4`, `B.6`, `B.7`, `D.1`, `D.2`, `D.4`, `E.1`, `E.2`, `E.5` | Rounds floats to 2 decimal places |
-| **NULLIF()** | `B.6`, `E.5` | Prevents fatal division-by-zero errors |
+| `users` → `game_sessions` | One-to-Many | One user can start many sessions |
+| `scenarios` → `game_sessions` | One-to-Many | One scenario can appear in many sessions |
+| `game_sessions` → `game_results` | One-to-Zero-or-One | A session either has one result or none (ongoing/abandoned) |
+
+The One-to-Zero-or-One relationship between `game_sessions` and `game_results` is enforced by a `UNIQUE` constraint on `game_results.session_id`. This guarantees that at most one result row can exist for any given session.
 
 ---
 
-## Section A: User Analytics
+## 4. Table Descriptions
+
+### 4.1 `users`
+
+Stores one row per registered player account.
+
+| Column | Type | Description |
+|---|---|---|
+| `user_id` | SERIAL (auto-increment INTEGER) | Primary key |
+| `name` | VARCHAR(100) | Player display name |
+| `email` | VARCHAR(255) | Login email — unique across all users |
+| `password_hash` | VARCHAR(255) | Hashed password (never plain text) |
+| `created_at` | TIMESTAMP | Account creation time, defaults to current time |
+
+### 4.2 `scenarios`
+
+Stores one row per game scenario, defined once and reused across many sessions.
+
+| Column | Type | Description |
+|---|---|---|
+| `scenario_id` | SERIAL | Primary key |
+| `scenario_name` | VARCHAR(150) | Short scenario name shown in the game menu |
+| `description` | TEXT | Story and goal description for the scenario |
+| `difficulty` | VARCHAR(20) | Allowed values: `'Easy'`, `'Medium'`, `'Hard'` |
+
+### 4.3 `game_sessions`
+
+Stores one row per play-through. Connects a user to a scenario and tracks timing and status.
+
+| Column | Type | Description |
+|---|---|---|
+| `session_id` | SERIAL | Primary key |
+| `user_id` | INTEGER | Foreign key → `users.user_id` |
+| `scenario_id` | INTEGER | Foreign key → `scenarios.scenario_id` |
+| `started_at` | TIMESTAMP | Session start time, defaults to current time |
+| `ended_at` | TIMESTAMP | Session end time — NULL if the session is still running |
+| `status` | VARCHAR(20) | Allowed: `'ongoing'`, `'completed'`, `'abandoned'` |
+
+### 4.4 `game_results`
+
+Stores one row per completed session. The `session_id` column is `UNIQUE`, enforcing at most one result per session.
+
+| Column | Type | Description |
+|---|---|---|
+| `result_id` | SERIAL | Primary key |
+| `session_id` | INTEGER UNIQUE | Foreign key → `game_sessions.session_id` |
+| `score` | INTEGER ≥ 0 | Player's final score |
+| `groundwater_before` | INTEGER 0–100 | Aquifer percentage before play |
+| `groundwater_after` | INTEGER 0–100 | Aquifer percentage after play |
+| `water_saved` | INTEGER ≥ 0 | Units of water conserved during the session |
+| `completed_at` | TIMESTAMP | When the result was recorded |
 
 ---
 
-### A.1 Total Sessions Per User
+## 5. Keys and Constraints
 
-#### Purpose
-Count how many game sessions each registered player has started, including users with zero sessions.
+### Primary Keys
 
-#### SQL Code
+| Table | Primary Key | Type |
+|---|---|---|
+| `users` | `user_id` | SERIAL (auto-increment) |
+| `scenarios` | `scenario_id` | SERIAL |
+| `game_sessions` | `session_id` | SERIAL |
+| `game_results` | `result_id` | SERIAL |
+
+### Candidate Keys
+
+A candidate key is any minimal set of attributes that uniquely identifies a row.
+
+| Table | Candidate Keys |
+|---|---|
+| `users` | `{user_id}` and `{email}` |
+| `scenarios` | `{scenario_id}` |
+| `game_sessions` | `{session_id}` |
+| `game_results` | `{result_id}` and `{session_id}` |
+
+`users.email` is a candidate key because it is both UNIQUE and NOT NULL. It is a secondary candidate key; `user_id` is chosen as the primary key because integers are more efficient for joins.
+
+`game_results.session_id` is a candidate key because it is `UNIQUE NOT NULL`. This also enforces the one-to-one constraint between sessions and results.
+
+### Super Keys
+
+A super key is any set of attributes that uniquely identifies a row (possibly non-minimal). Every superset of a candidate key is a super key. For example, in `users`:
+- `{user_id}` — candidate key (minimal)
+- `{email}` — candidate key (minimal)
+- `{user_id, email}` — super key (not minimal)
+- `{user_id, name}` — super key (not minimal)
+
+### Foreign Keys
+
+| Table | Column | References |
+|---|---|---|
+| `game_sessions` | `user_id` | `users(user_id)` |
+| `game_sessions` | `scenario_id` | `scenarios(scenario_id)` |
+| `game_results` | `session_id` | `game_sessions(session_id)` |
+
+All foreign keys enforce referential integrity: you cannot insert a session for a user who does not exist, and you cannot insert a result for a session that does not exist.
+
+### Unique Constraints
+
+| Table | Column | Purpose |
+|---|---|---|
+| `users` | `email` | No two accounts can share an email address |
+| `game_results` | `session_id` | One session can have at most one result row |
+
+### NOT NULL Constraints
+
+Every column in all four tables is NOT NULL except `game_sessions.ended_at`, which is NULL while a session is still running and filled in when the session ends.
+
+### CHECK Constraints
+
+| Table | Column | Rule |
+|---|---|---|
+| `scenarios` | `difficulty` | Must be `'Easy'`, `'Medium'`, or `'Hard'` |
+| `game_sessions` | `status` | Must be `'ongoing'`, `'completed'`, or `'abandoned'` |
+| `game_results` | `score` | Must be `>= 0` |
+| `game_results` | `groundwater_before` | Must be between `0` and `100` |
+| `game_results` | `groundwater_after` | Must be between `0` and `100` |
+| `game_results` | `water_saved` | Must be `>= 0` |
+
+---
+
+## 6. Schema Explanation
+
+The schema uses `SERIAL` as a shorthand for `INTEGER NOT NULL DEFAULT nextval(sequence)`. PostgreSQL automatically creates a sequence object that generates unique integer IDs.
+
+Timestamps use `TIMESTAMP WITHOUT TIME ZONE` (the PostgreSQL default when you write `TIMESTAMP`). All timestamps in the seed data are in IST for consistency.
+
+The `password_hash` column stores only the hash of a user's password — never the plain text. In a production system this would use a library like bcrypt. The seed data uses readable placeholder hashes for demonstration.
+
+Foreign key constraints prevent orphan records — if you try to delete a user who has sessions, PostgreSQL will reject it unless you explicitly cascade or nullify dependent rows.
+
+---
+
+## 7. Seed Data Explanation
+
+The seed data (`database/seed.sql`) populates all four tables with realistic demo records.
+
+### Users (6 rows)
+
+| user_id | name | Email |
+|---|---|---|
+| 1 | Aarav Sharma | aarav.sharma@email.com |
+| 2 | Priya Patel | priya.patel@email.com |
+| 3 | Rohan Mehta | rohan.mehta@email.com |
+| 4 | Sneha Joshi | sneha.joshi@email.com |
+| 5 | Karan Verma | karan.verma@email.com |
+| 6 | Ananya Singh | ananya.singh@email.com |
+
+### Scenarios (4 rows)
+
+| scenario_id | Name | Difficulty |
+|---|---|---|
+| 1 | Village Drought | Easy |
+| 2 | Farmland Crisis | Medium |
+| 3 | Industrial Overuse | Hard |
+| 4 | Monsoon Recharge | Easy |
+
+### Game Sessions (10 rows)
+
+Sessions 1–9 have `ended_at` values. Session 10 (Ananya, Monsoon Recharge) is currently `'ongoing'` with a NULL `ended_at`. Session 5 (Rohan, Farmland Crisis) was `'abandoned'` after 10 minutes.
+
+### Game Results (8 rows)
+
+Results exist only for completed sessions (sessions 1, 2, 3, 4, 6, 7, 8, 9). Sessions 5 and 10 have no result rows — session 5 was abandoned, session 10 is ongoing.
+
+---
+
+## 8. DDL / DML / TCL / DCL Coverage
+
+### DDL — Data Definition Language
+
+DDL defines the structure of the database. These commands change *what* exists, not *what data* is in it.
+
 ```sql
-SELECT 
-    u.user_id, 
-    u.name AS player_name, 
-    COUNT(gs.session_id) AS total_sessions
-FROM users u
-LEFT JOIN game_sessions gs ON u.user_id = gs.user_id
-GROUP BY u.user_id, u.name
-ORDER BY total_sessions DESC, u.user_id;
+-- CREATE TABLE — builds a new table
+CREATE TABLE users (
+    user_id    SERIAL PRIMARY KEY,
+    name       VARCHAR(100) NOT NULL,
+    email      VARCHAR(255) NOT NULL UNIQUE,
+    ...
+);
+
+-- ALTER TABLE — add a column to an existing table
+ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT 'Unknown';
+
+-- ALTER TABLE — rename a column
+ALTER TABLE users RENAME COLUMN city TO home_city;
+
+-- ALTER TABLE — change a column's data type
+ALTER TABLE users ALTER COLUMN home_city TYPE TEXT;
+
+-- ALTER TABLE — drop a column
+ALTER TABLE users DROP COLUMN IF EXISTS home_city;
+
+-- TRUNCATE — quickly delete all rows without logging individual deletions
+TRUNCATE TABLE demo_log;
+
+-- DROP TABLE — permanently remove a table and all its data
+DROP TABLE IF EXISTS demo_log;
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | total_sessions 
----------+--------------+----------------
-       1 | Aarav Sharma |              2
-       2 | Priya Patel  |              2
-       3 | Rohan Mehta  |              2
-       4 | Sneha Joshi  |              2
-       5 | Karan Verma  |              1
-       6 | Ananya Singh |              1
-```
+> `DROP` removes the table completely. `TRUNCATE` removes only the rows — the table structure survives.
 
-#### Viva Explanation & Concepts
-- **`LEFT JOIN`:** Preserves every registered user. An `INNER JOIN` would have omitted players who never started a session.
-- **`COUNT(gs.session_id)`:** Evaluates to `0` if a user has no sessions because `COUNT(column)` ignores `NULL`. If we used `COUNT(*)`, it would incorrectly return `1` for matched NULL rows.
+### DML — Data Manipulation Language
 
----
+DML works with the actual data stored in the tables.
 
-### A.2 Completed Sessions Per User
-
-#### Purpose
-Count how many sessions each player successfully finished (filtering out ongoing or abandoned sessions).
-
-#### SQL Code
 ```sql
-SELECT 
-    u.user_id, 
-    u.name AS player_name, 
-    COUNT(CASE WHEN gs.status = 'completed' THEN 1 END) AS completed_sessions
-FROM users u
-LEFT JOIN game_sessions gs ON u.user_id = gs.user_id
-GROUP BY u.user_id, u.name
-ORDER BY completed_sessions DESC, u.user_id;
+-- INSERT
+INSERT INTO users (name, email, password_hash)
+VALUES ('Test User', 'test@email.com', 'hash_test');
+
+-- SELECT (see Section 9)
+
+-- UPDATE
+UPDATE users SET name = 'Test Player' WHERE email = 'test@email.com';
+
+-- DELETE
+DELETE FROM users WHERE email = 'test@email.com';
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | completed_sessions 
----------+--------------+--------------------
-       1 | Aarav Sharma |                  2
-       2 | Priya Patel  |                  2
-       4 | Sneha Joshi  |                  2
-       3 | Rohan Mehta  |                  1
-       5 | Karan Verma  |                  1
-       6 | Ananya Singh |                  0
-```
+### TCL — Transaction Control Language
 
-#### Viva Explanation & Concepts
-- **Conditional Aggregation:** The `CASE` statement returns `1` when `status = 'completed'` and `NULL` otherwise. Because `COUNT()` ignores `NULL`, Ananya Singh correctly receives `0` completed sessions without being dropped from the report.
+TCL controls groups of DML statements that must all succeed or all fail together. See Section 15 for the full ACID explanation and Section F.1 in `analytics.sql` for the live transaction demonstration.
 
----
-
-### A.3 Average Score Per User
-
-#### Purpose
-Calculate the mean score achieved across completed games for each player.
-
-#### SQL Code
 ```sql
-SELECT 
-    u.user_id, 
-    u.name AS player_name, 
-    COALESCE(ROUND(AVG(gr.score), 2), 0.00) AS avg_score
-FROM users u
-LEFT JOIN game_sessions gs ON u.user_id = gs.user_id
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY u.user_id, u.name
-ORDER BY avg_score DESC;
+BEGIN;
+    INSERT INTO game_sessions ...;
+    SAVEPOINT after_session;
+    INSERT INTO game_results ...;
+ROLLBACK; -- or COMMIT
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | avg_score 
----------+--------------+-----------
-       4 | Sneha Joshi  |   1425.00
-       2 | Priya Patel  |   1265.00
-       5 | Karan Verma  |   1100.00
-       1 | Aarav Sharma |   1025.00
-       3 | Rohan Mehta  |    920.00
-       6 | Ananya Singh |      0.00
-```
+### DCL — Data Control Language
 
-#### Viva Explanation & Concepts
-- **`ROUND(AVG(gr.score), 2)`:** Calculates the numeric mean rounded to two decimal places.
-- **`COALESCE(..., 0.00)`:** Substitutes `NULL` with `0.00` for players who have not completed any game yet.
+DCL controls database user permissions. These require a PostgreSQL superuser to execute.
 
----
-
-### A.4 Total Water Saved Per User
-
-#### Purpose
-Sum all conservation impact units (groundwater saved) contributed by each player.
-
-#### SQL Code
 ```sql
-SELECT 
-    u.user_id, 
-    u.name AS player_name, 
-    COALESCE(SUM(gr.water_saved), 0) AS total_water_saved
-FROM users u
-LEFT JOIN game_sessions gs ON u.user_id = gs.user_id
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY u.user_id, u.name
-ORDER BY total_water_saved DESC;
+-- Create a read-only role for reporting tools
+CREATE ROLE readonly_user;
+GRANT SELECT ON users, scenarios, game_sessions, game_results TO readonly_user;
+
+-- Remove that permission
+REVOKE SELECT ON users FROM readonly_user;
+
+-- Grant full DML to the application account
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON users, scenarios, game_sessions, game_results
+    TO game_app_user;
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | total_water_saved 
----------+--------------+-------------------
-       4 | Sneha Joshi  |               480
-       2 | Priya Patel  |               400
-       1 | Aarav Sharma |               300
-       3 | Rohan Mehta  |               200
-       5 | Karan Verma  |               155
-       6 | Ananya Singh |                 0
-```
+> DCL examples are provided for educational reference. The roles `readonly_user` and `game_app_user` must be created in PostgreSQL first with `CREATE ROLE` before the GRANT/REVOKE statements can run.
 
 ---
 
-### A.5 Best-Performing Users (Comprehensive Ranking)
+## 9. Retrieval Queries
 
-#### Purpose
-Rank all players by cumulative score using the `DENSE_RANK()` window function.
+### SELECT with DISTINCT
 
-#### SQL Code
 ```sql
-SELECT 
-    u.user_id,
-    u.name AS player_name,
-    COUNT(gr.result_id) AS games_completed,
-    COALESCE(SUM(gr.score), 0) AS total_score,
-    COALESCE(ROUND(AVG(gr.score), 2), 0.00) AS avg_score,
-    COALESCE(SUM(gr.water_saved), 0) AS total_water_saved,
-    DENSE_RANK() OVER (ORDER BY COALESCE(SUM(gr.score), 0) DESC) AS rank_by_score
-FROM users u
-LEFT JOIN game_sessions gs ON u.user_id = gs.user_id
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY u.user_id, u.name
-ORDER BY rank_by_score;
+-- List all distinct difficulty levels in the game
+SELECT DISTINCT difficulty FROM scenarios ORDER BY difficulty;
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | games_completed | total_score | avg_score | total_water_saved | rank_by_score 
----------+--------------+-----------------+-------------+-----------+-------------------+---------------
-       4 | Sneha Joshi  |               2 |        2850 |   1425.00 |               480 |             1
-       2 | Priya Patel  |               2 |        2530 |   1265.00 |               400 |             2
-       1 | Aarav Sharma |               2 |        2050 |   1025.00 |               300 |             3
-       5 | Karan Verma  |               1 |        1100 |   1100.00 |               155 |             4
-       3 | Rohan Mehta  |               1 |         920 |    920.00 |               200 |             5
-       6 | Ananya Singh |               0 |           0 |      0.00 |                 0 |             6
-```
+Result: `Easy`, `Hard`, `Medium`
 
----
+### WHERE with IN, LIKE, ILIKE
 
-### A.6 Frequent Players Filter (GROUP BY + HAVING)
-
-#### Purpose
-Identify highly active players who have completed more than 1 session using the `HAVING` clause.
-
-#### SQL Code
 ```sql
-SELECT 
-    u.user_id,
-    u.name AS player_name,
-    COUNT(gr.result_id) AS completed_sessions,
-    SUM(gr.score) AS total_score,
-    SUM(gr.water_saved) AS total_water_saved
-FROM users u
-JOIN game_sessions gs ON u.user_id = gs.user_id
-JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY u.user_id, u.name
-HAVING COUNT(gr.result_id) > 1
-ORDER BY total_score DESC;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | completed_sessions | total_score | total_water_saved 
----------+--------------+--------------------+-------------+-------------------
-       4 | Sneha Joshi  |                  2 |        2850 |               480
-       2 | Priya Patel  |                  2 |        2530 |               400
-       1 | Aarav Sharma |                  2 |        2050 |               300
-```
-
-#### Viva Explanation & Concepts
-- **`WHERE` vs `HAVING`:**
-  - `WHERE` filters rows **before** aggregation happens.
-  - `HAVING` filters rows **after** aggregation has grouped rows together. Since `COUNT(gr.result_id)` does not exist before grouping, filtering by it requires `HAVING`.
-
----
-
-## Section B: Scenario Analytics
-
----
-
-### B.1 Total Sessions Per Scenario
-
-#### Purpose
-Measure player engagement across all available scenarios regardless of completion status.
-
-#### SQL Code
-```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gs.session_id) AS total_sessions
-FROM scenarios s
-LEFT JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
-GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-ORDER BY total_sessions DESC, s.scenario_id;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |   scenario_name    | difficulty | total_sessions 
--------------+--------------------+------------+----------------
-           1 | Village Drought    | Easy       |              3
-           2 | Farmland Crisis    | Medium     |              3
-           3 | Industrial Overuse | Hard       |              2
-           4 | Monsoon Recharge   | Easy       |              2
-```
-
----
-
-### B.2 Average Score Per Scenario
-
-#### Purpose
-Compare scoring difficulty across different conservation scenarios.
-
-#### SQL Code
-```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gr.result_id) AS completed_plays,
-    COALESCE(ROUND(AVG(gr.score), 2), 0.00) AS avg_score
-FROM scenarios s
-LEFT JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-ORDER BY avg_score DESC;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |   scenario_name    | difficulty | completed_plays | avg_score 
--------------+--------------------+------------+-----------------+-----------
-           3 | Industrial Overuse | Hard       |               2 |   1865.00
-           2 | Farmland Crisis    | Medium     |               2 |   1150.00
-           4 | Monsoon Recharge   | Easy       |               1 |    920.00
-           1 | Village Drought    | Easy       |               3 |    833.33
-```
-
----
-
-### B.3 Average Groundwater Improvement Per Scenario
-
-#### Purpose
-Calculate average aquifer level restoration per scenario (`groundwater_after - groundwater_before`).
-
-#### SQL Code
-```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gr.result_id) AS recorded_results,
-    COALESCE(ROUND(AVG(gr.groundwater_after - gr.groundwater_before), 2), 0.00) AS avg_groundwater_improvement
-FROM scenarios s
-LEFT JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-ORDER BY avg_groundwater_improvement DESC;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |   scenario_name    | difficulty | recorded_results | avg_groundwater_improvement 
--------------+--------------------+------------+------------------+-----------------------------
-           4 | Monsoon Recharge   | Easy       |                1 |                       30.00
-           3 | Industrial Overuse | Hard       |                2 |                       28.50
-           2 | Farmland Crisis    | Medium     |                2 |                       20.00
-           1 | Village Drought    | Easy       |                3 |                       13.33
-```
-
----
-
-### B.4 Score Distribution Per Scenario (Demonstrating MIN, MAX, AVG)
-
-#### Purpose
-Demonstrate `MIN()` and `MAX()` aggregate functions to evaluate minimum and maximum scores achieved per scenario alongside the mean.
-
-#### SQL Code
-```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gr.result_id) AS completed_count,
-    MIN(gr.score) AS lowest_score,
-    MAX(gr.score) AS highest_score,
-    ROUND(AVG(gr.score), 2) AS average_score
-FROM scenarios s
-JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
-JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-ORDER BY s.scenario_id;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |   scenario_name    | difficulty | completed_count | lowest_score | highest_score | average_score 
--------------+--------------------+------------+-----------------+--------------+---------------+---------------
-           1 | Village Drought    | Easy       |               3 |          780 |           870 |        833.33
-           2 | Farmland Crisis    | Medium     |               2 |         1100 |          1200 |       1150.00
-           3 | Industrial Overuse | Hard       |               2 |         1750 |          1980 |       1865.00
-           4 | Monsoon Recharge   | Easy       |               1 |          920 |           920 |        920.00
-```
-
-#### Viva Explanation & Concepts
-- **`MIN(col)` & `MAX(col)`:** Built-in aggregate functions that find the extremum values in a grouped partition.
-- In `Industrial Overuse`, scores range from 1,750 (lowest) to 1,980 (highest).
-
----
-
-### B.5 Most Popular Scenario
-
-#### Purpose
-Identify the scenario with the highest player attempts.
-
-#### SQL Code
-```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gs.session_id) AS session_count
-FROM scenarios s
-JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
-GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-ORDER BY session_count DESC, s.scenario_id
-LIMIT 1;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |  scenario_name  | difficulty | session_count 
--------------+-----------------+------------+---------------
-           1 | Village Drought | Easy       |             3
-```
-
----
-
-### B.6 Scenario Completion Statistics
-
-#### Purpose
-Complete breakdown of attempts, completions, abandonments, and success rates.
-
-#### SQL Code
-```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gs.session_id) AS total_attempts,
-    COUNT(CASE WHEN gs.status = 'completed' THEN 1 END) AS completed_count,
-    COUNT(CASE WHEN gs.status = 'abandoned' THEN 1 END) AS abandoned_count,
-    COUNT(CASE WHEN gs.status = 'ongoing' THEN 1 END) AS ongoing_count,
-    ROUND(
-        100.0 * COUNT(CASE WHEN gs.status = 'completed' THEN 1 END) / 
-        NULLIF(COUNT(gs.session_id), 0), 
-        2
-    ) AS completion_rate_pct
-FROM scenarios s
-LEFT JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
-GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-ORDER BY total_attempts DESC, s.scenario_id;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |   scenario_name    | difficulty | total_attempts | completed_count | abandoned_count | ongoing_count | completion_rate_pct 
--------------+--------------------+------------+----------------+-----------------+-----------------+---------------+---------------------
-           1 | Village Drought    | Easy       |              3 |               3 |               0 |             0 |              100.00
-           2 | Farmland Crisis    | Medium     |              3 |               2 |               1 |             0 |               66.67
-           3 | Industrial Overuse | Hard       |              2 |               2 |               0 |             0 |              100.00
-           4 | Monsoon Recharge   | Easy       |              2 |               1 |               0 |             1 |               50.00
-```
-
----
-
-### B.7 High-Impact Conservation Scenarios (GROUP BY + HAVING)
-
-#### Purpose
-Demonstrate `HAVING` by filtering for scenarios that deliver high average water savings ($\ge 150$ units).
-
-#### SQL Code
-```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gr.result_id) AS completed_plays,
-    ROUND(AVG(gr.score), 2) AS avg_score,
-    ROUND(AVG(gr.water_saved), 2) AS avg_water_saved
-FROM scenarios s
-JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
-JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-HAVING AVG(gr.water_saved) >= 150
-ORDER BY avg_water_saved DESC;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |   scenario_name    | difficulty | completed_plays | avg_score | avg_water_saved 
--------------+--------------------+------------+-----------------+-----------+-----------------
-           3 | Industrial Overuse | Hard       |               2 |   1865.00 |          330.00
-           4 | Monsoon Recharge   | Easy       |               1 |    920.00 |          200.00
-           2 | Farmland Crisis    | Medium     |               2 |   1150.00 |          167.50
-```
-
-#### Viva Explanation & Concepts
-- `Village Drought` averaged only 113.33 units of water saved, so it was filtered out by `HAVING AVG(gr.water_saved) >= 150`.
-
----
-
-## Section C: Leaderboard (RANK vs DENSE_RANK)
-
----
-
-### C.1 AquaGuardian Official Leaderboard
-
-#### Purpose
-Display competitive rankings comparing `RANK()` and `DENSE_RANK()` side-by-side.
-
-#### SQL Code
-```sql
-SELECT 
-    RANK() OVER (ORDER BY SUM(gr.score) DESC) AS rank,
-    DENSE_RANK() OVER (ORDER BY SUM(gr.score) DESC) AS dense_rank,
-    u.name AS player_name,
-    SUM(gr.score) AS total_score,
-    SUM(gr.water_saved) AS total_water_saved,
-    COUNT(gr.result_id) AS completed_sessions
-FROM users u
-INNER JOIN game_sessions gs ON u.user_id = gs.user_id
-INNER JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY u.user_id, u.name
-ORDER BY dense_rank, total_score DESC;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- rank | dense_rank | player_name  | total_score | total_water_saved | completed_sessions 
-------+------------+--------------+-------------+-------------------+--------------------
-    1 |          1 | Sneha Joshi  |        2850 |               480 |                  2
-    2 |          2 | Priya Patel  |        2530 |               400 |                  2
-    3 |          3 | Aarav Sharma |        2050 |               300 |                  2
-    4 |          4 | Karan Verma  |        1100 |               155 |                  1
-    5 |          5 | Rohan Mehta  |         920 |               200 |                  1
-```
-
-#### Viva Explanation & Concepts
-- **`RANK()` vs `DENSE_RANK()` Difference:**
-  - Both award identical ranks to tied rows.
-  - When a tie occurs at rank 2 (e.g., two players tied), `RANK()` assigns `1, 2, 2, 4` (skips rank 3).
-  - `DENSE_RANK()` assigns `1, 2, 2, 3` (leaves no gaps).
-
----
-
-## Section D: Groundwater Analytics
-
----
-
-### D.1 Global Conservation Summary (COUNT, SUM, AVG, MIN, MAX)
-
-#### Purpose
-Showcase all 5 primary aggregate functions in a single table-level query.
-
-#### SQL Code
-```sql
-SELECT 
-    COUNT(result_id) AS total_results_evaluated,
-    SUM(water_saved) AS total_water_saved_overall,
-    ROUND(AVG(water_saved), 2) AS avg_water_saved_per_game,
-    MIN(water_saved) AS min_water_saved_single_game,
-    MAX(water_saved) AS max_water_saved_single_game,
-    MIN(score) AS lowest_score_recorded,
-    MAX(score) AS highest_score_recorded
-FROM game_results;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- total_results_evaluated | total_water_saved_overall | avg_water_saved_per_game | min_water_saved_single_game | max_water_saved_single_game | lowest_score_recorded | highest_score_recorded 
--------------------------+---------------------------+--------------------------+-----------------------------+-----------------------------+-----------------------+------------------------
-                       8 |                      1535 |                   191.88 |                          90 |                         350 |                   780 |                   1980
-```
-
----
-
-### D.2 Average Groundwater Before and After Gameplay
-
-#### Purpose
-Quantify net rehabilitation across all played missions.
-
-#### SQL Code
-```sql
-SELECT 
-    ROUND(AVG(groundwater_before), 2) AS avg_groundwater_before,
-    ROUND(AVG(groundwater_after), 2) AS avg_groundwater_after,
-    ROUND(AVG(groundwater_after - groundwater_before), 2) AS overall_avg_improvement
-FROM game_results;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- avg_groundwater_before | avg_groundwater_after | overall_avg_improvement 
-------------------------+-----------------------+-------------------------
-                  32.88 |                 53.75 |                   20.88
-```
-
----
-
-### D.3 Groundwater Improvement Per Session With Recovery Category
-
-#### Purpose
-Classify individual completed runs into qualitative environmental categories using `CASE`.
-
-#### SQL Code
-```sql
-SELECT 
-    gr.result_id,
-    gs.session_id,
-    u.name AS player_name,
-    s.scenario_name,
-    gr.groundwater_before,
-    gr.groundwater_after,
-    (gr.groundwater_after - gr.groundwater_before) AS groundwater_improvement,
-    CASE 
-        WHEN (gr.groundwater_after - gr.groundwater_before) >= 25 THEN 'Substantial Recovery'
-        WHEN (gr.groundwater_after - gr.groundwater_before) >= 15 THEN 'Moderate Recovery'
-        ELSE 'Minimal Recovery'
-    END AS conservation_category
-FROM game_results gr
-JOIN game_sessions gs ON gr.session_id = gs.session_id
-JOIN users u ON gs.user_id = u.user_id
-JOIN scenarios s ON gs.scenario_id = s.scenario_id
-ORDER BY groundwater_improvement DESC;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- result_id | session_id | player_name  |   scenario_name    | groundwater_before | groundwater_after | groundwater_improvement | conservation_category 
------------+------------+--------------+--------------------+--------------------+-------------------+-------------------------+-----------------------
-         6 |          7 | Sneha Joshi  | Industrial Overuse |                 18 |                50 |                      32 | Substantial Recovery
-         5 |          6 | Rohan Mehta  | Monsoon Recharge   |                 30 |                60 |                      30 | Substantial Recovery
-         4 |          4 | Priya Patel  | Industrial Overuse |                 20 |                45 |                      25 | Substantial Recovery
-         2 |          2 | Aarav Sharma | Farmland Crisis    |                 35 |                58 |                      23 | Moderate Recovery
-         8 |          9 | Karan Verma  | Farmland Crisis    |                 38 |                55 |                      17 | Moderate Recovery
-         7 |          8 | Sneha Joshi  | Village Drought    |                 42 |                57 |                      15 | Moderate Recovery
-         1 |          1 | Aarav Sharma | Village Drought    |                 40 |                55 |                      15 | Moderate Recovery
-         3 |          3 | Priya Patel  | Village Drought    |                 40 |                50 |                      10 | Minimal Recovery
-```
-
----
-
-### D.4 User-Wise Water Conservation Performance
-
-#### Purpose
-Assess each player's environmental impact, tracking volume and average recovery.
-
-#### SQL Code
-```sql
-SELECT 
-    u.user_id,
-    u.name AS player_name,
-    COUNT(gr.result_id) AS sessions_contributed,
-    COALESCE(SUM(gr.water_saved), 0) AS total_water_saved,
-    COALESCE(ROUND(AVG(gr.water_saved), 2), 0.00) AS avg_water_saved_per_session,
-    COALESCE(ROUND(AVG(gr.groundwater_after - gr.groundwater_before), 2), 0.00) AS avg_groundwater_level_gain
-FROM users u
-LEFT JOIN game_sessions gs ON u.user_id = gs.user_id
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY u.user_id, u.name
-ORDER BY total_water_saved DESC, avg_groundwater_level_gain DESC;
-```
-
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | sessions_contributed | total_water_saved | avg_water_saved_per_session | avg_groundwater_level_gain 
----------+--------------+----------------------+-------------------+-----------------------------+----------------------------
-       4 | Sneha Joshi  |                    2 |               480 |                      240.00 |                      23.50
-       2 | Priya Patel  |                    2 |               400 |                      200.00 |                      17.50
-       1 | Aarav Sharma |                    2 |               300 |                      150.00 |                      19.00
-       3 | Rohan Mehta  |                    1 |               200 |                      200.00 |                      30.00
-       5 | Karan Verma  |                    1 |               155 |                      155.00 |                      17.00
-       6 | Ananya Singh |                    0 |                 0 |                        0.00 |                       0.00
-```
-
----
-
-## Section E: Session & Temporal Analytics
-
----
-
-### E.1 Completed Versus Ongoing Sessions
-
-#### Purpose
-Examine session distribution across all three allowed states (`completed`, `ongoing`, `abandoned`).
-
-#### SQL Code
-```sql
-SELECT 
-    status,
-    COUNT(*) AS session_count,
-    ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM game_sessions), 2) AS percentage
+-- Sessions that are either ongoing or abandoned
+SELECT session_id, status, started_at
 FROM game_sessions
-GROUP BY status
-ORDER BY session_count DESC;
+WHERE status IN ('ongoing', 'abandoned');
+
+-- Users whose name starts with the letter A
+SELECT name, email FROM users WHERE name LIKE 'A%';
+
+-- Scenarios with 'water' anywhere in the description (case-insensitive)
+SELECT scenario_name FROM scenarios WHERE description ILIKE '%water%';
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
-  status   | session_count | percentage 
------------+---------------+------------
- completed |             8 |      80.00
- ongoing   |             1 |      10.00
- abandoned |             1 |      10.00
-```
+### ORDER BY, LIMIT, OFFSET
 
----
-
-### E.2 Session Duration
-
-#### Purpose
-Calculate play duration using PostgreSQL intervals and minutes while handling in-progress runs safely.
-
-#### SQL Code
 ```sql
-SELECT 
-    gs.session_id,
-    u.name AS player_name,
-    s.scenario_name,
-    gs.status,
-    gs.started_at,
-    gs.ended_at,
-    CASE 
-        WHEN gs.ended_at IS NOT NULL THEN (gs.ended_at - gs.started_at)
-        ELSE NULL 
-    END AS duration_interval,
-    CASE 
-        WHEN gs.ended_at IS NOT NULL THEN 
-            ROUND(EXTRACT(EPOCH FROM (gs.ended_at - gs.started_at)) / 60.0, 2)
-        ELSE NULL 
-    END AS duration_minutes,
-    COALESCE(
-        CAST(ROUND(EXTRACT(EPOCH FROM (gs.ended_at - gs.started_at)) / 60.0, 0) AS VARCHAR) || ' mins',
-        'Still in progress'
-    ) AS duration_display
-FROM game_sessions gs
-JOIN users u ON gs.user_id = u.user_id
-JOIN scenarios s ON gs.scenario_id = s.scenario_id
-ORDER BY gs.session_id;
+-- Top 3 scores ever recorded
+SELECT session_id, score FROM game_results ORDER BY score DESC LIMIT 3;
+
+-- Page 2 of scores (rows 4–6)
+SELECT session_id, score FROM game_results ORDER BY score DESC LIMIT 3 OFFSET 3;
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- session_id | player_name  |   scenario_name    |  status   |     started_at      |      ended_at       | duration_interval | duration_minutes | duration_display  
-------------+--------------+--------------------+-----------+---------------------+---------------------+-------------------+------------------+-------------------
-          1 | Aarav Sharma | Village Drought    | completed | 2024-02-01 10:00:00 | 2024-02-01 10:25:00 | 00:25:00          |            25.00 | 25 mins
-          2 | Aarav Sharma | Farmland Crisis    | completed | 2024-02-05 11:00:00 | 2024-02-05 11:45:00 | 00:45:00          |            45.00 | 45 mins
-          3 | Priya Patel  | Village Drought    | completed | 2024-02-10 09:00:00 | 2024-02-10 09:30:00 | 00:30:00          |            30.00 | 30 mins
-          4 | Priya Patel  | Industrial Overuse | completed | 2024-02-20 14:00:00 | 2024-02-20 14:50:00 | 00:50:00          |            50.00 | 50 mins
-          5 | Rohan Mehta  | Farmland Crisis    | abandoned | 2024-03-01 15:00:00 | 2024-03-01 15:10:00 | 00:10:00          |            10.00 | 10 mins
-          6 | Rohan Mehta  | Monsoon Recharge   | completed | 2024-03-05 16:00:00 | 2024-03-05 16:35:00 | 00:35:00          |            35.00 | 35 mins
-          7 | Sneha Joshi  | Industrial Overuse | completed | 2024-03-10 10:00:00 | 2024-03-10 11:00:00 | 01:00:00          |            60.00 | 60 mins
-          8 | Sneha Joshi  | Village Drought    | completed | 2024-03-15 09:30:00 | 2024-03-15 10:00:00 | 00:30:00          |            30.00 | 30 mins
-          9 | Karan Verma  | Farmland Crisis    | completed | 2024-04-01 13:00:00 | 2024-04-01 13:40:00 | 00:40:00          |            40.00 | 40 mins
-         10 | Ananya Singh | Monsoon Recharge   | ongoing   | 2024-04-05 17:00:00 |                     |                   |                  | Still in progress
-```
+### EXISTS and NOT EXISTS
 
----
-
-### E.3 Recent Game History
-
-#### Purpose
-Retrieve the 5 most recent gaming events with user and scenario details.
-
-#### SQL Code
 ```sql
-SELECT 
-    gs.session_id,
-    gs.started_at,
-    u.name AS player_name,
-    s.scenario_name,
-    s.difficulty,
-    gs.status,
-    COALESCE(gr.score, 0) AS score,
-    COALESCE(gr.water_saved, 0) AS water_saved
-FROM game_sessions gs
-JOIN users u ON gs.user_id = u.user_id
-JOIN scenarios s ON gs.scenario_id = s.scenario_id
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-ORDER BY gs.started_at DESC
-LIMIT 5;
-```
+-- Users who have at least one session (EXISTS)
+SELECT name FROM users u
+WHERE EXISTS (
+    SELECT 1 FROM game_sessions gs WHERE gs.user_id = u.user_id
+);
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- session_id |     started_at      | player_name  |   scenario_name    | difficulty |  status   | score | water_saved 
-------------+---------------------+--------------+--------------------+------------+-----------+-------+-------------
-         10 | 2024-04-05 17:00:00 | Ananya Singh | Monsoon Recharge   | Easy       | ongoing   |     0 |           0
-          9 | 2024-04-01 13:00:00 | Karan Verma  | Farmland Crisis    | Medium     | completed |  1100 |         155
-          8 | 2024-03-15 09:30:00 | Sneha Joshi  | Village Drought    | Easy       | completed |   870 |         130
-          7 | 2024-03-10 10:00:00 | Sneha Joshi  | Industrial Overuse | Hard       | completed |  1980 |         350
-          6 | 2024-03-05 16:00:00 | Rohan Mehta  | Monsoon Recharge   | Easy       | completed |   920 |         200
-```
-
----
-
-### E.4 Users With No Completed Sessions
-
-#### Purpose
-Identify registered players who have not completed any game session using a correlated `NOT EXISTS` subquery.
-
-#### SQL Code
-```sql
-SELECT 
-    u.user_id,
-    u.name,
-    u.email,
-    u.created_at
-FROM users u
+-- Users who have never completed a session (NOT EXISTS)
+SELECT name FROM users u
 WHERE NOT EXISTS (
-    SELECT 1 
-    FROM game_sessions gs 
+    SELECT 1 FROM game_sessions gs
     WHERE gs.user_id = u.user_id AND gs.status = 'completed'
 );
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id |     name     |         email          |     created_at      
----------+--------------+------------------------+---------------------
-       6 | Ananya Singh | ananya.singh@email.com | 2024-03-20 16:00:00
+---
+
+## 10. SQL Functions
+
+### Numeric Functions
+
+| Function | Purpose | Example |
+|---|---|---|
+| `ROUND(x, n)` | Round to n decimal places | `ROUND(AVG(score), 2)` |
+| `ABS(x)` | Absolute value | `ABS(-15)` → 15 |
+| `NULLIF(a, b)` | Returns NULL if a = b | `NULLIF(COUNT(*), 0)` prevents division by zero |
+
+### String Functions
+
+Demonstrated in query **A.8** in `analytics.sql`:
+
+```sql
+SELECT
+    UPPER(u.name)                     AS name_upper,
+    LOWER(u.email)                    AS email_lower,
+    LENGTH(u.name)                    AS name_length,
+    CONCAT(u.name, ' <', u.email, '>')  AS display_label
+FROM users u;
+```
+
+| Function | Result for `Aarav Sharma` |
+|---|---|
+| `UPPER(name)` | `AARAV SHARMA` |
+| `LOWER(email)` | `aarav.sharma@email.com` |
+| `LENGTH(name)` | `12` |
+| `CONCAT(name, ' <', email, '>')` | `Aarav Sharma <aarav.sharma@email.com>` |
+
+### Date and Time Functions
+
+Demonstrated in queries **E.2**, **E.7**, and **E.8** in `analytics.sql`:
+
+| Function | Purpose | Example |
+|---|---|---|
+| `NOW()` | Current timestamp | `TO_CHAR(NOW(), 'YYYY-MM-DD')` |
+| `DATE_TRUNC('month', ts)` | Truncate to start of month | Groups Feb-05 and Feb-20 into Feb-01 |
+| `TO_CHAR(ts, fmt)` | Format timestamp as string | `'FMMonth YYYY'` → `February 2024` |
+| `EXTRACT(YEAR FROM ts)` | Extract year as number | `EXTRACT(YEAR FROM started_at)` → `2024` |
+| `EXTRACT(MONTH FROM ts)` | Extract month number | `2` for February |
+| `EXTRACT(DOW FROM ts)` | Day of week (0=Sunday) | `4` for Thursday |
+| `ts2 - ts1` | Interval between two timestamps | `ended_at - started_at` → `00:25:00` |
+| `EXTRACT(EPOCH FROM interval)` | Interval as total seconds | `÷ 60.0` gives minutes |
+
+### NULL Handling Functions
+
+```sql
+-- COALESCE: return the first non-NULL value
+COALESCE(SUM(gr.water_saved), 0)        -- shows 0 instead of NULL
+COALESCE(ended_at, NOW())               -- uses NOW() if ended_at is NULL
+
+-- NULLIF: return NULL if two expressions are equal
+NULLIF(COUNT(gs.session_id), 0)         -- prevents division by zero in %
 ```
 
 ---
 
-### E.5 Scenario-Wise Completion Rate
+## 11. GROUP BY, HAVING and CASE
 
-#### Purpose
-Calculate success and abandon percentages per scenario.
+### GROUP BY
 
-#### SQL Code
+`GROUP BY` collapses multiple rows into summary groups, which aggregate functions then operate on.
+
 ```sql
-SELECT 
-    s.scenario_id,
-    s.scenario_name,
-    s.difficulty,
-    COUNT(gs.session_id) AS total_played,
-    COUNT(CASE WHEN gs.status = 'completed' THEN 1 END) AS completed_sessions,
-    COUNT(CASE WHEN gs.status = 'abandoned' THEN 1 END) AS abandoned_sessions,
-    COUNT(CASE WHEN gs.status = 'ongoing' THEN 1 END) AS ongoing_sessions,
-    ROUND(
-        100.0 * COUNT(CASE WHEN gs.status = 'completed' THEN 1 END) / 
-        NULLIF(COUNT(gs.session_id), 0), 
-        2
-    ) AS completion_rate_percentage
+-- Sessions grouped by status
+SELECT status, COUNT(*) AS count
+FROM game_sessions
+GROUP BY status;
+```
+
+| status | count |
+|---|---|
+| completed | 8 |
+| ongoing | 1 |
+| abandoned | 1 |
+
+### HAVING
+
+`HAVING` filters groups **after** aggregation. It is not the same as `WHERE`, which filters individual rows **before** grouping.
+
+```sql
+-- Only scenarios where average water saved >= 150 (query B.7)
+SELECT s.scenario_name, ROUND(AVG(gr.water_saved), 2) AS avg_saved
 FROM scenarios s
-LEFT JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
+JOIN game_sessions gs ON s.scenario_id = gs.scenario_id
+JOIN game_results  gr ON gs.session_id = gr.session_id
 GROUP BY s.scenario_id, s.scenario_name, s.difficulty
-ORDER BY completion_rate_percentage DESC, total_played DESC;
+HAVING AVG(gr.water_saved) >= 150
+ORDER BY avg_saved DESC;
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- scenario_id |   scenario_name    | difficulty | total_played | completed_sessions | abandoned_sessions | ongoing_sessions | completion_rate_percentage 
--------------+--------------------+------------+--------------+--------------------+--------------------+------------------+----------------------------
-           1 | Village Drought    | Easy       |            3 |                  3 |                  0 |                0 |                     100.00
-           3 | Industrial Overuse | Hard       |            2 |                  2 |                  0 |                0 |                     100.00
-           2 | Farmland Crisis    | Medium     |            3 |                  2 |                  1 |                0 |                      66.67
-           4 | Monsoon Recharge   | Easy       |            2 |                  1 |                  0 |                1 |                      50.00
+| scenario_name | avg_saved |
+|---|---|
+| Industrial Overuse | 330.00 |
+| Monsoon Recharge | 200.00 |
+| Farmland Crisis | 167.50 |
+
+Village Drought averages only 113.33 units saved, so it is filtered out by `HAVING`.
+
+### CASE Statement
+
+`CASE` works like an if-else inside a query. It returns a value based on evaluated conditions.
+
+```sql
+-- Classify each session result by recovery level (query D.3)
+CASE
+    WHEN (gr.groundwater_after - gr.groundwater_before) >= 25 THEN 'Substantial Recovery'
+    WHEN (gr.groundwater_after - gr.groundwater_before) >= 15 THEN 'Moderate Recovery'
+    ELSE                                                            'Minimal Recovery'
+END AS recovery_category
+```
+
+`CASE` can also be used inside aggregate functions for conditional counting:
+
+```sql
+-- Count completed sessions separately without a WHERE clause
+COUNT(CASE WHEN gs.status = 'completed' THEN 1 END) AS completed_count
 ```
 
 ---
 
-### E.6 Session Score Progression Per Player (Demonstrating LAG and LEAD)
+## 12. Joins and Subqueries
 
-#### Purpose
-Demonstrate `LAG()` and `LEAD()` window functions to inspect player performance trends across successive games.
+### INNER JOIN
 
-#### SQL Code
+Returns only the rows where the join condition matches in **both** tables. If a user has no sessions, they will not appear.
+
 ```sql
-SELECT 
-    gs.user_id,
-    u.name AS player_name,
-    gs.session_id,
-    s.scenario_name,
-    gs.started_at,
-    gr.score AS current_score,
-    LAG(gr.score) OVER (PARTITION BY gs.user_id ORDER BY gs.started_at) AS previous_score,
-    gr.score - LAG(gr.score) OVER (PARTITION BY gs.user_id ORDER BY gs.started_at) AS score_growth,
-    LEAD(gr.score) OVER (PARTITION BY gs.user_id ORDER BY gs.started_at) AS next_score
-FROM game_results gr
-JOIN game_sessions gs ON gr.session_id = gs.session_id
-JOIN users u ON gs.user_id = u.user_id
-JOIN scenarios s ON gs.scenario_id = s.scenario_id
-ORDER BY gs.user_id, gs.started_at;
+-- Leaderboard: only users who have completed at least one game (query C.1)
+SELECT u.name, SUM(gr.score) AS total_score
+FROM users u
+INNER JOIN game_sessions gs ON u.user_id    = gs.user_id
+INNER JOIN game_results  gr ON gs.session_id = gr.session_id
+GROUP BY u.user_id, u.name
+ORDER BY total_score DESC;
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
- user_id | player_name  | session_id |   scenario_name    |     started_at      | current_score | previous_score | score_growth | next_score 
----------+--------------+------------+--------------------+---------------------+---------------+----------------+--------------+------------
-       1 | Aarav Sharma |          1 | Village Drought    | 2024-02-01 10:00:00 |           850 |                |              |       1200
-       1 | Aarav Sharma |          2 | Farmland Crisis    | 2024-02-05 11:00:00 |          1200 |            850 |          350 |           
-       2 | Priya Patel  |          3 | Village Drought    | 2024-02-10 09:00:00 |           780 |                |              |       1750
-       2 | Priya Patel  |          4 | Industrial Overuse | 2024-02-20 14:00:00 |          1750 |            780 |          970 |           
-       3 | Rohan Mehta  |          6 | Monsoon Recharge   | 2024-03-05 16:00:00 |           920 |                |              |           
-       4 | Sneha Joshi  |          7 | Industrial Overuse | 2024-03-10 10:00:00 |          1980 |                |              |        870
-       4 | Sneha Joshi  |          8 | Village Drought    | 2024-03-15 09:30:00 |           870 |           1980 |        -1110 |           
-       5 | Karan Verma  |          9 | Farmland Crisis    | 2024-04-01 13:00:00 |          1100 |                |              |           
+### LEFT JOIN
+
+Returns **all** rows from the left table plus matching rows from the right table. Where there is no match, the right-side columns are NULL.
+
+```sql
+-- All users, including Ananya who has no completed game result (query A.3)
+SELECT u.name, COALESCE(ROUND(AVG(gr.score), 2), 0.00) AS avg_score
+FROM users u
+LEFT JOIN game_sessions gs ON u.user_id    = gs.user_id
+LEFT JOIN game_results  gr ON gs.session_id = gr.session_id
+GROUP BY u.user_id, u.name;
 ```
 
-#### Viva Explanation & Concepts
-- **`PARTITION BY gs.user_id`:** Isolates the window so the previous/next scores are only computed within that specific user's match history.
-- **`LAG(col)`:** Looks back 1 row. On Aarav Sharma's second game, `LAG()` gives 850, showing a score improvement (`score_growth`) of +350 points.
-- **`LEAD(col)`:** Looks forward 1 row. On Aarav Sharma's first game, `LEAD()` previews his next score (1200).
-- First rows naturally produce `NULL` for `LAG()`, and final rows produce `NULL` for `LEAD()`.
+Ananya Singh has an ongoing session with no result, so her `avg_score` returns `NULL` from `AVG`. `COALESCE` converts it to `0.00`.
+
+### Subqueries
+
+**WHERE-clause (non-correlated) subquery:** The inner query runs once and its result is used by the outer query.
+
+```sql
+-- Find the highest score ever, then find all sessions matching it
+SELECT session_id, score FROM game_results
+WHERE score = (SELECT MAX(score) FROM game_results);
+```
+
+**FROM-clause (derived table) subquery:** The inner query produces a temporary result set that the outer query treats as a table.
+
+```sql
+-- Query A.7: players with cumulative score above 1500
+SELECT sub.player_name, sub.total_score
+FROM (
+    SELECT u.name AS player_name, SUM(gr.score) AS total_score
+    FROM users u
+    JOIN game_sessions gs ON u.user_id    = gs.user_id
+    JOIN game_results  gr ON gs.session_id = gr.session_id
+    GROUP BY u.user_id, u.name
+) AS sub
+WHERE sub.total_score > 1500
+ORDER BY sub.total_score DESC;
+```
+
+**Correlated subquery:** The inner query references the outer query's current row. It re-executes once per outer row.
+
+```sql
+-- Query E.4: users who have never finished a session
+SELECT u.name FROM users u
+WHERE NOT EXISTS (
+    SELECT 1 FROM game_sessions gs
+    WHERE gs.user_id = u.user_id AND gs.status = 'completed'
+);
+```
+
+**Scalar subquery in SELECT:** Returns a single value used as a column in the outer query.
+
+```sql
+-- Query E.1: percentage calculation using total row count
+ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM game_sessions), 2) AS percentage
+```
 
 ---
 
-### E.7 Monthly Gameplay Activity Trends (Demonstrating DATE_TRUNC, TO_CHAR, NOW)
+## 13. Window Functions
 
-#### Purpose
-Demonstrate PostgreSQL temporal functions (`DATE_TRUNC`, `TO_CHAR`, `NOW`) by aggregating sessions and water savings into monthly buckets.
+A window function computes a value for each row relative to a **window** of related rows — without collapsing rows into one like `GROUP BY` does. The `OVER()` clause defines the window.
 
-#### SQL Code
+### ROW_NUMBER, RANK, DENSE_RANK
+
+Demonstrated together in query **C.1**:
+
 ```sql
-SELECT 
-    DATE_TRUNC('month', gs.started_at) AS month_start,
-    TO_CHAR(DATE_TRUNC('month', gs.started_at), 'FMMonth YYYY') AS display_month,
-    COUNT(gs.session_id) AS total_sessions_started,
-    COUNT(CASE WHEN gs.status = 'completed' THEN 1 END) AS completed_sessions,
-    COALESCE(SUM(gr.water_saved), 0) AS total_water_saved,
-    TO_CHAR(NOW(), 'YYYY-MM-DD') AS report_generated_on
-FROM game_sessions gs
-LEFT JOIN game_results gr ON gs.session_id = gr.session_id
-GROUP BY DATE_TRUNC('month', gs.started_at)
-ORDER BY month_start;
+ROW_NUMBER()  OVER (ORDER BY SUM(gr.score) DESC)  -- always 1,2,3,4,5
+RANK()        OVER (ORDER BY SUM(gr.score) DESC)  -- 1,2,2,4 on a tie
+DENSE_RANK()  OVER (ORDER BY SUM(gr.score) DESC)  -- 1,2,2,3 on a tie
 ```
 
-#### Actual PostgreSQL 18 Execution Output
-```text
-     month_start     | display_month | total_sessions_started | completed_sessions | total_water_saved | report_generated_on 
----------------------+---------------+------------------------+--------------------+-------------------+---------------------
- 2024-02-01 00:00:00 | February 2024 |                      4 |                  4 |               700 | 2026-11-08
- 2024-03-01 00:00:00 | March 2024    |                      4 |                  3 |               680 | 2026-11-08
- 2024-04-01 00:00:00 | April 2024    |                      2 |                  1 |               155 | 2026-11-08
+**Tie-handling comparison** (hypothetical tied scores at rank 2):
+
+| Player | Score | ROW_NUMBER | RANK | DENSE_RANK |
+|---|---|---|---|---|
+| Sneha | 2850 | 1 | 1 | 1 |
+| Priya | 2530 | 2 | 2 | 2 |
+| Aarav | 2530 | 3 | 2 | 2 |
+| Karan | 1100 | 4 | 4 | 3 |
+
+(In the actual seed data all scores are unique, so RANK and DENSE_RANK produce the same values.)
+
+### PARTITION BY
+
+`PARTITION BY` resets the window for each distinct group, like a GROUP BY only for the window function.
+
+```sql
+-- Score progression per user: each user's history is independent
+LAG(gr.score) OVER (PARTITION BY gs.user_id ORDER BY gs.started_at)
 ```
 
-#### Viva Explanation & Concepts
-- **`DATE_TRUNC('month', timestamp)`:** Truncates a timestamp to the very first second of that month (e.g., `2024-02-05 11:00:00` becomes `2024-02-01 00:00:00`). Essential for time-series grouping.
-- **`TO_CHAR(..., 'FMMonth YYYY')`:** Formats the date into clean readable English (`February 2024`). `FM` prefix removes leading fill blanks.
-- **`NOW()`:** Returns the current transaction timestamp, used here to stamp when the analytical report was produced.
+Without `PARTITION BY`, the LAG would compare rows across all users. With it, it only looks back within that user's own sessions.
+
+### LAG and LEAD
+
+Demonstrated in query **E.6**:
+
+```sql
+LAG(gr.score)  OVER (PARTITION BY gs.user_id ORDER BY gs.started_at) AS previous_score,
+LEAD(gr.score) OVER (PARTITION BY gs.user_id ORDER BY gs.started_at) AS next_score
+```
+
+- `LAG(col)` → value from the **previous** row in the partition
+- `LEAD(col)` → value from the **next** row in the partition
+- First rows have `NULL` for `LAG`; last rows have `NULL` for `LEAD`
+
+**Actual output for Aarav Sharma:**
+
+| session | scenario | current_score | previous_score | score_growth | next_score |
+|---|---|---|---|---|---|
+| 1 | Village Drought | 850 | NULL | NULL | 1200 |
+| 2 | Farmland Crisis | 1200 | 850 | +350 | NULL |
+
+Aarav improved by 350 points between his two sessions.
+
+---
+
+## 14. Normalization — 1NF to BCNF
+
+Normalization is the process of organizing a database to reduce redundancy and ensure data integrity. We analyze the AquaGuardian schema using the actual tables.
+
+### Functional Dependencies
+
+A functional dependency `A → B` means knowing the value of A is enough to determine the value of B.
+
+**`users` table:**
+- `user_id → name, email, password_hash, created_at` (PK determines all)
+- `email → user_id, name, password_hash, created_at` (email is a candidate key)
+
+**`scenarios` table:**
+- `scenario_id → scenario_name, description, difficulty`
+
+**`game_sessions` table:**
+- `session_id → user_id, scenario_id, started_at, ended_at, status`
+
+**`game_results` table:**
+- `result_id → session_id, score, groundwater_before, groundwater_after, water_saved, completed_at`
+- `session_id → result_id, score, groundwater_before, groundwater_after, water_saved, completed_at`
+
+### First Normal Form (1NF)
+
+**Rule:** Every column must hold atomic (indivisible) values. No repeating groups. Every row must be uniquely identifiable.
+
+**AquaGuardian satisfies 1NF because:**
+- Every column holds a single value. For example, `difficulty` holds one string (`'Easy'`), not a list.
+- There are no repeating columns (no `score1`, `score2`, `score3` pattern).
+- Every table has a primary key: `user_id`, `scenario_id`, `session_id`, `result_id`.
+
+### Second Normal Form (2NF)
+
+**Rule:** The table must be in 1NF, and every non-key column must depend on the **whole** primary key — not just part of it.
+
+2NF is only relevant for tables with **composite primary keys**. All four AquaGuardian tables use **single-column** SERIAL primary keys, so there can be no partial dependencies.
+
+**AquaGuardian satisfies 2NF** automatically because none of the tables have composite primary keys.
+
+However, consider how the design avoids partial dependency problems. If we had stored `scenario_name` or `difficulty` inside `game_sessions`, those attributes would depend only on `scenario_id`, not on `session_id`. This would violate 2NF. By separating scenario data into its own table and referencing it via foreign key, we eliminate that redundancy.
+
+### Third Normal Form (3NF)
+
+**Rule:** The table must be in 2NF, and no non-key column may depend on another non-key column (no transitive dependencies).
+
+A transitive dependency is `PK → A → B`, where B depends on A rather than directly on the primary key.
+
+**Analysis of `game_results`:**
+
+Suppose `score` somehow determined `groundwater_after`. That would be a transitive dependency: `result_id → score → groundwater_after`. But in this schema, `groundwater_after` depends directly on the specific game session outcome, not on the score. The dependency is `result_id → groundwater_after` directly. No transitive dependency exists.
+
+**Analysis of `game_sessions`:**
+
+Does `status` transitively depend on anything other than `session_id`? No. The status of a session is a property of that specific session row, not derivable from `user_id` or `scenario_id` alone.
+
+**AquaGuardian satisfies 3NF** because there are no transitive dependencies in any of the four tables.
+
+### Boyce-Codd Normal Form (BCNF)
+
+**Rule:** For every non-trivial functional dependency `X → Y`, X must be a superkey (a set of columns that uniquely identifies every row).
+
+BCNF is a stricter version of 3NF. It is violated when a non-superkey column determines another column.
+
+**Analysis of `users`:**
+
+Functional dependencies:
+- `user_id → name, email, password_hash, created_at` — `user_id` is PK (superkey) ✓
+- `email → user_id, name, password_hash, created_at` — `email` is a candidate key (superkey) ✓
+
+Both determinants (`user_id` and `email`) are superkeys, so `users` satisfies BCNF.
+
+**Analysis of `scenarios`:**
+
+The only functional dependency is `scenario_id → scenario_name, description, difficulty`. The determinant `scenario_id` is the primary key (superkey). BCNF is satisfied.
+
+**Analysis of `game_sessions`:**
+
+The only functional dependency is `session_id → user_id, scenario_id, started_at, ended_at, status`. The determinant is the primary key. BCNF is satisfied.
+
+**Analysis of `game_results`:**
+
+Functional dependencies:
+- `result_id → session_id, score, groundwater_before, groundwater_after, water_saved, completed_at` — `result_id` is PK ✓
+- `session_id → result_id, score, groundwater_before, groundwater_after, water_saved, completed_at` — `session_id` is a candidate key ✓
+
+Both determinants are superkeys. `game_results` satisfies BCNF.
+
+**Conclusion:** All four AquaGuardian tables satisfy 1NF, 2NF, 3NF, and BCNF.
+
+---
+
+## 15. ACID and Transaction Handling
+
+### What is a Transaction?
+
+A transaction is a group of SQL statements that are treated as one single unit of work. Either all statements succeed and are saved, or none of them are saved. This prevents the database from being left in a half-updated, inconsistent state.
+
+### ACID Properties
+
+**Atomicity**
+> All operations in a transaction succeed together, or none of them are applied.
+
+In AquaGuardian, inserting a game session and its result must be atomic. If the session insert succeeds but the result insert fails (for example, due to a CHECK constraint violation), the entire transaction rolls back and neither row is saved.
+
+**Consistency**
+> A transaction takes the database from one valid state to another valid state. All constraints, foreign keys, and check constraints must hold at the end of the transaction.
+
+The `game_results.session_id` foreign key constraint ensures that a result can only be inserted for a session that actually exists. If the session insert were rolled back, any attempt to insert a result referencing it would violate the FK constraint.
+
+**Isolation**
+> Concurrent transactions should not interfere with each other. The intermediate state of a transaction is not visible to other transactions.
+
+PostgreSQL implements isolation using Multi-Version Concurrency Control (MVCC). The default isolation level is `READ COMMITTED`, which means a transaction sees only data that has been committed by other transactions. Changes inside an open `BEGIN...COMMIT` block are invisible to other sessions until `COMMIT` is executed.
+
+**Durability**
+> Once a transaction is committed, the changes are permanently written to disk even if the database server crashes immediately afterward.
+
+PostgreSQL achieves this via a Write-Ahead Log (WAL). Every committed change is written to the WAL before the response is sent to the client.
+
+### Transaction Anomalies
+
+| Anomaly | Description | PostgreSQL Default |
+|---|---|---|
+| **Dirty Read** | A transaction reads data written by another transaction that has not yet committed | Prevented at READ COMMITTED and above |
+| **Non-Repeatable Read** | A transaction reads the same row twice and gets different values because another transaction committed in between | Prevented at REPEATABLE READ and above |
+| **Phantom Read** | A transaction re-executes a query and finds new rows that another transaction inserted and committed | Prevented at SERIALIZABLE level |
+| **Lost Update** | Two transactions both read a value, update it, and write it back — the first update is overwritten | Prevented by PostgreSQL row-level locking or SERIALIZABLE |
+
+### TCL Commands
+
+| Command | What it does |
+|---|---|
+| `BEGIN` | Start a new transaction block |
+| `SAVEPOINT name` | Mark a named checkpoint inside a transaction |
+| `ROLLBACK TO SAVEPOINT name` | Undo everything since that savepoint, without ending the transaction |
+| `ROLLBACK` | Undo the entire transaction back to the `BEGIN` |
+| `COMMIT` | Permanently save all changes made since `BEGIN` |
+
+### Transaction Example (from analytics.sql, Section F.1)
+
+```sql
+BEGIN;
+
+    INSERT INTO game_sessions (user_id, scenario_id, started_at, ended_at, status)
+    VALUES (6, 2, '2024-05-01 09:00:00', '2024-05-01 09:45:00', 'completed');
+
+    SAVEPOINT after_session;
+
+    INSERT INTO game_results
+        (session_id, score, groundwater_before, groundwater_after, water_saved, completed_at)
+    VALUES
+        (currval('game_sessions_session_id_seq'), 1300, 28, 55, 240, '2024-05-01 09:45:00');
+
+ROLLBACK; -- changed to COMMIT in production use
+```
+
+**Why `currval()`?** After an `INSERT INTO game_sessions`, PostgreSQL advances the SERIAL sequence. `currval('game_sessions_session_id_seq')` retrieves that exact value within the same session — no ambiguous subquery required, and it is safe to run repeatedly because sequences always advance monotonically.
+
+**Why `ROLLBACK` in the demo?** The demo rolls back so the seed data remains clean and the file can be re-executed without producing duplicate or conflicting IDs. In a real application, `COMMIT` would be used here.
+
+---
+
+## 16. Analytics Queries and Interpretations
+
+All queries in this section are located in `database/analytics.sql` and have been executed successfully against the `aquaguardian` database loaded with `schema.sql` and `seed.sql`. The query ID shown (e.g., A.1) matches the label in `analytics.sql`.
+
+### Section A: User Analytics
+
+| Query | Business Question | Key Concepts |
+|---|---|---|
+| A.1 | How active is each user? (all sessions) | LEFT JOIN, COUNT, GROUP BY |
+| A.2 | How many missions did each player complete? | Conditional COUNT(CASE …) |
+| A.3 | Who scores the highest on average? | AVG, ROUND, COALESCE |
+| A.4 | Who conserves the most water? | SUM, COALESCE |
+| A.5 | Comprehensive player ranking | DENSE_RANK, all aggregates |
+| A.6 | Which players have finished more than 1 mission? | HAVING COUNT > 1 |
+| A.7 | Which players have a total score above 1500? | FROM-subquery (derived table) |
+| A.8 | Display player names and emails in formatted labels | UPPER, LOWER, LENGTH, CONCAT |
+
+**Key finding:** Sneha Joshi leads the leaderboard with 2,850 total points and 480 water units saved across 2 completed missions.
+
+### Section B: Scenario Analytics
+
+| Query | Business Question | Key Concepts |
+|---|---|---|
+| B.1 | Which scenarios are played most? | LEFT JOIN on scenarios |
+| B.2 | Which scenarios produce the best scores? | AVG(score) per scenario |
+| B.3 | Which scenario restores the aquifer most? | AVG(after - before) |
+| B.4 | What is the score range per scenario? | MIN, MAX, AVG together |
+| B.5 | Single most popular scenario | ORDER BY DESC LIMIT 1 |
+| B.6 | Completion vs abandonment stats per scenario | CASE-pivot, NULLIF |
+| B.7 | High water-saving scenarios only | HAVING AVG(water_saved) >= 150 |
+
+**Key finding:** Industrial Overuse (Hard) produces the highest average score (1865) and second-highest average groundwater recovery (+28.5%). Village Drought (Easy) has a 100% completion rate.
+
+### Section C: Leaderboard
+
+| Query | Business Question | Key Concepts |
+|---|---|---|
+| C.1 | Official leaderboard with ranking | ROW_NUMBER, RANK, DENSE_RANK |
+
+The leaderboard uses INNER JOIN so only players with at least one verified result appear. `ROW_NUMBER` is unique per row; `RANK` and `DENSE_RANK` differ only when there are score ties.
+
+### Section D: Groundwater Analytics
+
+| Query | Business Question | Key Concepts |
+|---|---|---|
+| D.1 | What is the game-wide total environmental impact? | COUNT, SUM, AVG, MIN, MAX |
+| D.2 | Average aquifer recovery across all missions? | AVG before/after/improvement |
+| D.3 | Which sessions had the best groundwater recovery? | CASE classification |
+| D.4 | Individual ecological impact per player | COALESCE, multi-aggregates |
+
+**Key finding:** Across all 8 completed missions, players saved 1,535 units of water and improved average aquifer levels from 32.88% to 53.75% (+20.88 percentage points average recovery).
+
+### Section E: Session & Temporal Analytics
+
+| Query | Business Question | Key Concepts |
+|---|---|---|
+| E.1 | Session status distribution | Scalar subquery for % |
+| E.2 | How long did each mission take? | EXTRACT(EPOCH …), CASE for NULL |
+| E.3 | What happened recently? | ORDER BY timestamp DESC, LIMIT 5 |
+| E.4 | Who has never completed a mission? | Correlated NOT EXISTS |
+| E.5 | Completion rate per scenario | CASE-pivot, NULLIF |
+| E.6 | Did players improve over time? | LAG, LEAD, PARTITION BY user_id |
+| E.7 | Monthly session and water-saving trends | DATE_TRUNC, TO_CHAR, NOW |
+| E.8 | Extract year, month, day-of-week from timestamps | EXTRACT(YEAR/MONTH/DOW …) |
+
+**Key finding:** Rohan Mehta abandoned his Farmland Crisis session after only 10 minutes (session 5). Ananya Singh's Monsoon Recharge session (session 10) is currently ongoing with no result recorded.
+
+### Section F: Transaction Demo
+
+| Query | Purpose | Key Concepts |
+|---|---|---|
+| F.1 | Demonstrate atomicity of session + result insert | BEGIN, SAVEPOINT, currval, ROLLBACK |
+
+---
+
+## 17. Execution Instructions
+
+### Prerequisites
+
+1. PostgreSQL must be installed and running.
+2. A database named `aquaguardian` must be created.
+
+```bash
+psql -U postgres -c "CREATE DATABASE aquaguardian;"
+```
+
+### Running the Files in Order
+
+```bash
+# Step 1: Create the tables
+psql -U postgres -d aquaguardian -f database/schema.sql
+
+# Step 2: Insert sample data
+psql -U postgres -d aquaguardian -f database/seed.sql
+
+# Step 3: Run all analytics queries
+psql -U postgres -d aquaguardian -f database/analytics.sql
+
+# Step 4: Run the full syllabus queries file
+psql -U postgres -d aquaguardian -f database/queries.sql
+```
+
+Adjust the `-U postgres` flag to match your local PostgreSQL username if it is different.
+
+### Running a Single Query
+
+To test one query interactively, open the PostgreSQL shell:
+
+```bash
+psql -U postgres -d aquaguardian
+```
+
+Then paste any query from `analytics.sql` directly at the `aquaguardian=#` prompt.
+
+> **Important:** Do not re-run `seed.sql` against a database that already has data. It will fail on the UNIQUE constraint for `email`. Always start from a fresh database (`DROP DATABASE aquaguardian; CREATE DATABASE aquaguardian;`) before re-running from scratch.
+
+---
+
+## 18. Validation Results
+
+### Execution Environment
+
+- **PostgreSQL version:** 18.6 (Homebrew, macOS aarch64)
+- **Database name:** `aquaguardian`
+- **Schema loaded from:** `database/schema.sql`
+- **Seed data loaded from:** `database/seed.sql`
+
+### Confirmed Row Counts (after seed, before analytics)
+
+| Table | Rows |
+|---|---|
+| `users` | 6 |
+| `scenarios` | 4 |
+| `game_sessions` | 10 |
+| `game_results` | 8 |
+
+### File Execution Results
+
+| File | Command | Exit Code | Errors |
+|---|---|---|---|
+| `schema.sql` | `psql … -f schema.sql` | 0 | None |
+| `seed.sql` | `psql … -f seed.sql` | 0 | None |
+| `queries.sql` | `psql … -f queries.sql` | 0 | None |
+| `analytics.sql` | `psql … -f analytics.sql` | 0 | None |
+
+### Post-Analytics Data Integrity
+
+After running `analytics.sql` (which includes a `BEGIN … ROLLBACK` transaction demo), row counts were re-verified:
+
+| Table | Expected | Actual |
+|---|---|---|
+| `game_sessions` | 10 | 10 |
+| `game_results` | 8 | 8 |
+
+The ROLLBACK correctly undid the demo inserts, leaving the seed data unchanged.
+
+### Selected Query Outputs (Verified)
+
+**Leaderboard (C.1):**
+
+| row_num | rank | dense_rank | player_name | total_score | total_water_saved | completed_sessions |
+|---|---|---|---|---|---|---|
+| 1 | 1 | 1 | Sneha Joshi | 2850 | 480 | 2 |
+| 2 | 2 | 2 | Priya Patel | 2530 | 400 | 2 |
+| 3 | 3 | 3 | Aarav Sharma | 2050 | 300 | 2 |
+| 4 | 4 | 4 | Karan Verma | 1100 | 155 | 1 |
+| 5 | 5 | 5 | Rohan Mehta | 920 | 200 | 1 |
+
+**Global Conservation Summary (D.1):**
+
+| Metric | Value |
+|---|---|
+| Total results evaluated | 8 |
+| Total water saved overall | 1535 |
+| Avg water saved per game | 191.88 |
+| Min water saved (single game) | 90 |
+| Max water saved (single game) | 350 |
+| Lowest score recorded | 780 |
+| Highest score recorded | 1980 |
+
+**Monthly Trends (E.7):**
+
+| display_month | total_sessions | completed_sessions | total_water_saved |
+|---|---|---|---|
+| February 2024 | 4 | 4 | 700 |
+| March 2024 | 4 | 3 | 680 |
+| April 2024 | 2 | 1 | 155 |
+
+**Transaction Demo (F.1):**
+```
+BEGIN
+INSERT 0 1
+SAVEPOINT
+INSERT 0 1
+ROLLBACK
+```
+Both inserts were reversed. Data counts confirmed at 10 sessions and 8 results after rollback.
+
+---
+
+## 19. DE Syllabus Coverage Checklist
+
+The table below maps each required syllabus topic to the query or section that demonstrates it.
+
+| # | Syllabus Topic | Demonstrated | Location |
+|---|---|---|---|
+| 1 | CREATE TABLE (DDL) | ✅ | `schema.sql` |
+| 2 | ALTER TABLE (DDL) | ✅ | `queries.sql` Section A |
+| 3 | DROP TABLE / TRUNCATE (DDL) | ✅ | `queries.sql` Section A |
+| 4 | INSERT (DML) | ✅ | `seed.sql`, `queries.sql` Section C |
+| 5 | SELECT (DML) | ✅ | All analytics queries |
+| 6 | UPDATE (DML) | ✅ | `queries.sql` Section C |
+| 7 | DELETE (DML) | ✅ | `queries.sql` Section C |
+| 8 | GRANT / REVOKE (DCL) | ✅ | `queries.sql` Section D |
+| 9 | BEGIN / COMMIT (TCL) | ✅ | `analytics.sql` F.1, `queries.sql` Section E |
+| 10 | ROLLBACK (TCL) | ✅ | `analytics.sql` F.1 |
+| 11 | SAVEPOINT (TCL) | ✅ | `analytics.sql` F.1 |
+| 12 | SELECT with WHERE | ✅ | `queries.sql` Section B |
+| 13 | DISTINCT | ✅ | `queries.sql` Section B |
+| 14 | IN / NOT IN | ✅ | `queries.sql` Section B |
+| 15 | LIKE / ILIKE | ✅ | `queries.sql` Section B |
+| 16 | EXISTS / NOT EXISTS | ✅ | `analytics.sql` E.4 |
+| 17 | ORDER BY | ✅ | Multiple queries |
+| 18 | LIMIT and OFFSET | ✅ | `queries.sql` Section B, `analytics.sql` E.3 |
+| 19 | COUNT() | ✅ | A.1, A.2, A.5, A.6, B.1–B.7, C.1, D.1, E.1 |
+| 20 | SUM() | ✅ | A.4, A.5, A.6, C.1, D.1, D.4 |
+| 21 | AVG() | ✅ | A.3, A.5, B.2, B.3, B.4, B.7, D.1, D.2, D.4 |
+| 22 | MIN() | ✅ | B.4, D.1 |
+| 23 | MAX() | ✅ | B.4, D.1 |
+| 24 | GROUP BY | ✅ | A.1–A.7, B.1–B.7, C.1, D.4, E.1, E.5, E.7 |
+| 25 | HAVING | ✅ | A.6, B.7 |
+| 26 | CASE statement | ✅ | A.2, B.6, D.3, E.2, E.5 |
+| 27 | INNER JOIN | ✅ | A.6, A.7, B.4, B.5, B.7, C.1, D.3, E.6 |
+| 28 | LEFT JOIN | ✅ | A.1–A.5, B.1–B.3, B.6, D.4, E.3, E.5, E.7 |
+| 29 | Subquery in WHERE | ✅ | E.1 (scalar), E.4 (NOT EXISTS) |
+| 30 | Subquery in FROM (derived table) | ✅ | A.7 |
+| 31 | Correlated subquery | ✅ | E.4 |
+| 32 | ROW_NUMBER() | ✅ | C.1 |
+| 33 | RANK() | ✅ | C.1 |
+| 34 | DENSE_RANK() | ✅ | A.5, C.1 |
+| 35 | LAG() | ✅ | E.6 |
+| 36 | LEAD() | ✅ | E.6 |
+| 37 | PARTITION BY | ✅ | E.6 |
+| 38 | OVER() | ✅ | A.5, C.1, E.6 |
+| 39 | NOW() | ✅ | E.7 |
+| 40 | DATE_TRUNC() | ✅ | E.7 |
+| 41 | TO_CHAR() | ✅ | E.7 |
+| 42 | EXTRACT() | ✅ | E.2, E.8 |
+| 43 | Timestamp arithmetic (interval) | ✅ | E.2 |
+| 44 | UPPER() / LOWER() | ✅ | A.8 |
+| 45 | LENGTH() | ✅ | A.8 |
+| 46 | CONCAT() | ✅ | A.8 |
+| 47 | ROUND() | ✅ | Throughout analytics |
+| 48 | COALESCE() | ✅ | A.3, A.4, A.5, D.4, E.2, E.3, E.7 |
+| 49 | NULLIF() | ✅ | B.6, E.5 |
+| 50 | 1NF | ✅ | Section 14 of this guide |
+| 51 | 2NF | ✅ | Section 14 of this guide |
+| 52 | 3NF | ✅ | Section 14 of this guide |
+| 53 | BCNF | ✅ | Section 14 of this guide |
+| 54 | Functional dependencies | ✅ | Section 14 of this guide |
+| 55 | Candidate keys and super keys | ✅ | Sections 5 and 14 of this guide |
+| 56 | ACID properties | ✅ | Section 15 of this guide |
+| 57 | Transaction anomalies | ✅ | Section 15 of this guide |
+| 58 | PRIMARY KEY constraint | ✅ | `schema.sql` |
+| 59 | FOREIGN KEY constraint | ✅ | `schema.sql` |
+| 60 | UNIQUE constraint | ✅ | `schema.sql` |
+| 61 | NOT NULL constraint | ✅ | `schema.sql` |
+| 62 | CHECK constraint | ✅ | `schema.sql` |
+| 63 | Referential integrity | ✅ | `schema.sql`, Section 5 |
