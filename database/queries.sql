@@ -160,9 +160,18 @@ WHERE  email = 'demo.user@email.com';
 -- =============================================================
 -- SECTION D: DCL – Data Control Language
 --            GRANT, REVOKE
--- Note: Run these as a PostgreSQL superuser (e.g., postgres).
---       Replace 'readonly_user' with an actual database role.
+-- Note: Roles are conditionally created first if they do not exist.
 -- =============================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'readonly_user') THEN
+        CREATE ROLE readonly_user;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'game_app_user') THEN
+        CREATE ROLE game_app_user;
+    END IF;
+END $$;
 
 -- D.1 GRANT – give a read-only role the ability to SELECT from all four tables
 GRANT SELECT ON users, scenarios, game_sessions, game_results TO readonly_user;
@@ -186,28 +195,23 @@ REVOKE ALL PRIVILEGES ON users FROM readonly_user;
 -- succeed or NONE of them are saved. This is called atomicity.
 
 -- E.1 Safe transaction: insert a new session + its result together.
---     We use RETURNING to capture the new session_id directly —
---     this avoids the ambiguous subquery problem entirely.
+--     We use currval() to dynamically reference the generated session_id,
+--     demonstrate COMMIT, and clean up afterwards so seed data stays pure.
 
 BEGIN;
 
     -- Step 1: Insert a new completed session for Karan (user_id = 5)
     --         playing Industrial Overuse (scenario_id = 3).
-    --         RETURNING gives us back the auto-generated session_id.
     INSERT INTO game_sessions (user_id, scenario_id, started_at, ended_at, status)
-    VALUES (5, 3, '2024-05-01 09:00:00', '2024-05-01 10:00:00', 'completed')
-    RETURNING session_id;
-    -- (Note: in a real app the application code captures this value.
-    --  For this SQL demo, we hardcode the expected next ID in Step 2.)
+    VALUES (5, 3, '2024-05-01 09:00:00', '2024-05-01 10:00:00', 'completed');
 
     SAVEPOINT after_session_insert;
     -- SAVEPOINT marks a safe point we can roll back to if Step 2 fails.
 
-    -- Step 2: Insert the game result using the known next session_id.
-    --         In the seed data, 10 sessions exist (IDs 1–10).
-    --         This transaction adds session_id = 11 and result for it.
+    -- Step 2: Insert the game result using currval() from the sequence.
+    --         currval() reliably retrieves the session_id from Step 1.
     INSERT INTO game_results (session_id, score, groundwater_before, groundwater_after, water_saved, completed_at)
-    VALUES (11, 1600, 25, 55, 275, '2024-05-01 10:00:00');
+    VALUES (currval('game_sessions_session_id_seq'), 1600, 25, 55, 275, '2024-05-01 10:00:00');
 
     -- If Step 2 had failed we would run:
     -- ROLLBACK TO SAVEPOINT after_session_insert;
@@ -215,7 +219,10 @@ BEGIN;
 
 COMMIT;
 -- COMMIT saves both inserts permanently.
--- Running ROLLBACK instead of COMMIT would discard everything since BEGIN.
+
+-- Clean up the committed demo rows so repeated runs remain idempotent:
+DELETE FROM game_results WHERE session_id = currval('game_sessions_session_id_seq');
+DELETE FROM game_sessions WHERE session_id = currval('game_sessions_session_id_seq');
 
 -- E.2 ROLLBACK demo – show how a full rollback works
 BEGIN;
