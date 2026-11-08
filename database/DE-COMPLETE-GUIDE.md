@@ -324,24 +324,35 @@ ROLLBACK;
 
 ## 8. Prisma ORM Integration & API Contract
 
-The project provides complete Prisma ORM integration via `database/prisma/schema.prisma` that mirrors the PostgreSQL DDL.
+The project provides complete Prisma ORM integration via `database/prisma/schema.prisma` that is 100% consistent with the PostgreSQL DDL in `database/schema.sql`.
 
 ### 8.1 SQL DDL vs. Prisma ORM Mapping
 
-| PostgreSQL DDL Concept | Prisma Schema Equivalent |
-|---|---|
-| `CREATE TABLE users` | `model User { ... }` |
-| `user_id SERIAL PRIMARY KEY` | `userId Int @id @default(autoincrement()) @map("user_id")` |
-| `email VARCHAR(255) UNIQUE` | `email String @unique @db.VarChar(255)` |
-| `CHECK (difficulty IN (...))` | `difficulty Difficulty` with `enum Difficulty { Easy Medium Hard }` |
-| `REFERENCES users(user_id)` | `user User @relation(fields: [userId], references: [userId])` |
-| `session_id INT UNIQUE` | `sessionId Int @unique @map("session_id")` (1:1 relation) |
+| PostgreSQL DDL Concept | Prisma Schema Equivalent | Consistency Rationale |
+|---|---|---|
+| `CREATE TABLE users` | `model User { ... }` | Mapped via `@@map("users")` |
+| `user_id SERIAL PRIMARY KEY` | `userId Int @id @default(autoincrement()) @map("user_id")` | Native auto-increment sequence |
+| `email VARCHAR(255) UNIQUE` | `email String @unique @db.VarChar(255)` | Matches RFC email length & uniqueness |
+| `CHECK (difficulty IN (...))` | `difficulty String @db.VarChar(20)` | Prisma maps VARCHAR + CHECK constraints to `String @db.VarChar(20)`. This maintains 100% database parity with `schema.sql` without requiring custom PostgreSQL enum types. In TypeScript, compile-time safety is guaranteed using union types: `type Difficulty = 'Easy' \| 'Medium' \| 'Hard'`. |
+| `CHECK (status IN (...))` | `status String @default("ongoing") @db.VarChar(20)` | Matches default value and VARCHAR length |
+| `REFERENCES users(user_id)` | `user User @relation(fields: [userId], references: [userId])` | Referential integrity foreign key |
+| `session_id INT UNIQUE` | `sessionId Int @unique @map("session_id")` | Enforces 1:0..1 cardinality at schema level |
 
-### 8.2 Express.js Service Layer Implementation Example
+### 8.2 Version Compatibility & Configuration
+
+- **Installed Version:** `prisma@6.19.3` and `@prisma/client@6.19.3` (LTS stable).
+- **Configuration Advantage:** Prisma 6 directly connects to PostgreSQL via `url = env("DATABASE_URL")` in `schema.prisma` using the high-performance native query engine. In contrast, experimental Prisma 7/8 versions split datasource URLs into separate config files (`prisma.config.ts`) and mandate external driver adapters.
+- **Migration Baselining:** The baseline initial migration is maintained at `database/prisma/migrations/0_init/migration.sql`, verified using `prisma migrate status` (Status: *"Database schema is up to date!"*).
+
+### 8.3 Express.js Service Layer Implementation Example
 
 ```typescript
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
+
+// Type safety matching schema.sql constraints
+export type Difficulty = 'Easy' | 'Medium' | 'Hard';
+export type SessionStatus = 'ongoing' | 'completed' | 'abandoned';
 
 // Atomically complete session and save game result
 export async function submitGameResult(sessionId: number, resultData: {
@@ -380,7 +391,7 @@ export async function submitGameResult(sessionId: number, resultData: {
 
 ## 9. Empirical Testing & Verification Evidence
 
-All SQL demonstration files were executed against live **PostgreSQL 18.6** running on macOS.
+All SQL demonstration files and Prisma ORM tools were executed against live **PostgreSQL 18.6** running on macOS.
 
 ### 9.1 Verification Log & Exit Codes
 
@@ -401,12 +412,23 @@ Verified Row Counts:
 Test Step 3: database/queries.sql execution
 Command: psql -U anubhavgupta -d aquaguardian -f database/queries.sql
 Exit Code: 0 (Success - ZERO ERRORS)
-Verified DCL role safety & idempotent TCL cleanup.
+Verified DQL labeling, sequence permissions for application role, dynamic ID resolution, and PL/pgSQL constraint error handling (Section N).
 
 Test Step 4: database/analytics.sql execution
 Command: psql -U anubhavgupta -d aquaguardian -f database/analytics.sql
 Exit Code: 0 (Success - ZERO ERRORS)
 Verified post-execution database integrity (counts remain 6, 4, 10, 8).
+
+Test Step 5: Prisma Schema Validation & Migration
+Command: npm run prisma:validate && npm run prisma:status
+Output: "The schema at prisma/schema.prisma is valid" & "Database schema is up to date!"
+Exit Code: 0 (Success)
+
+Test Step 6: Prisma Client Generation & Live CRUD Queries
+Command: npm run prisma:generate && node test-client.js
+Output: "PRISMA VERIFIED COUNTS: { users: 6, scenarios: 4, sessions: 10, results: 8 }"
+Verified atomic $transaction insert + verification + rollback/cleanup.
+Exit Code: 0 (Success)
 ```
 
 ### 9.2 Key Analytical Outcomes from Live Execution

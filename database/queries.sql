@@ -55,7 +55,8 @@ DROP TABLE IF EXISTS demo_log;
 
 
 -- =============================================================
--- SECTION B: DML – SELECT, DISTINCT, WHERE, IN, LIKE, EXISTS
+-- SECTION B: DQL – Data Query Language
+--            SELECT, DISTINCT, WHERE, IN, LIKE, EXISTS,
 --            ORDER BY, LIMIT, OFFSET
 -- =============================================================
 
@@ -126,41 +127,62 @@ LIMIT  3 OFFSET 3;
 
 
 -- =============================================================
--- SECTION C: DML – INSERT, UPDATE, DELETE
+-- SECTION C: DML – Data Manipulation Language
+--            INSERT, UPDATE, DELETE
 -- =============================================================
+
+-- Clean up any leftover demo records before running to ensure safe repeatability:
+DELETE FROM users WHERE email = 'demo.user@email.com';
+DELETE FROM scenarios WHERE scenario_name = 'Urban Water Grid';
 
 -- C.1 INSERT – add a new user
 INSERT INTO users (name, email, password_hash, created_at)
 VALUES ('Demo User', 'demo.user@email.com', 'hash_demo_999', '2024-05-01 10:00:00');
 
--- C.2 UPDATE – update the demo user's name
+-- C.2 INSERT – add a new scenario
+INSERT INTO scenarios (scenario_name, description, difficulty)
+VALUES ('Urban Water Grid', 'Fix leaking municipal pipelines to save groundwater.', 'Medium');
+
+-- C.3 UPDATE – update the demo user's name
 UPDATE users
 SET    name = 'Demo Player'
 WHERE  email = 'demo.user@email.com';
 
--- C.3 UPDATE – mark Ananya's ongoing session as abandoned
---     session_id = 10 belongs to Ananya (user_id = 6), currently 'ongoing'
+-- C.4 UPDATE – dynamically locate Ananya's ongoing session and mark as abandoned
+--     (Removes hardcoded assumption of session_id = 10)
 UPDATE game_sessions
 SET    status   = 'abandoned',
        ended_at = '2024-04-05 17:30:00'
-WHERE  session_id = 10;
+WHERE  session_id = (
+    SELECT gs.session_id 
+    FROM   game_sessions gs 
+    JOIN   users u ON gs.user_id = u.user_id 
+    WHERE  u.email = 'ananya.singh@email.com' AND gs.status = 'ongoing'
+    LIMIT 1
+);
 
--- C.4 UPDATE – reset it back to ongoing for further query demos
+-- C.5 UPDATE – reset Ananya's session back to ongoing for subsequent query demos
 UPDATE game_sessions
 SET    status   = 'ongoing',
        ended_at = NULL
-WHERE  session_id = 10;
+WHERE  session_id = (
+    SELECT gs.session_id 
+    FROM   game_sessions gs 
+    JOIN   users u ON gs.user_id = u.user_id 
+    WHERE  u.email = 'ananya.singh@email.com' AND gs.status = 'abandoned'
+    LIMIT 1
+);
 
--- C.5 DELETE – remove only the demo user we inserted in C.1
---     We do NOT delete any seed data so all later queries stay consistent.
-DELETE FROM users
-WHERE  email = 'demo.user@email.com';
+-- C.6 DELETE – remove demo user and demo scenario so seed data stays clean
+DELETE FROM users WHERE email = 'demo.user@email.com';
+DELETE FROM scenarios WHERE scenario_name = 'Urban Water Grid';
 
 
 -- =============================================================
 -- SECTION D: DCL – Data Control Language
 --            GRANT, REVOKE
 -- Note: Roles are conditionally created first if they do not exist.
+--       Sequence permissions are explicitly granted for SERIAL columns.
 -- =============================================================
 
 DO $$
@@ -179,10 +201,17 @@ GRANT SELECT ON users, scenarios, game_sessions, game_results TO readonly_user;
 -- D.2 GRANT – give a game-app role INSERT and UPDATE rights on session tables
 GRANT INSERT, UPDATE ON game_sessions, game_results TO game_app_user;
 
--- D.3 REVOKE – take away the INSERT right from game_app_user on game_results
+-- D.3 GRANT sequence permissions – crucial for PostgreSQL SERIAL auto-increment columns!
+--     Without USAGE/SELECT on sequences, INSERT fails with permission denied on nextval().
+GRANT USAGE, SELECT ON SEQUENCE game_sessions_session_id_seq, game_results_result_id_seq TO game_app_user;
+
+-- D.4 REVOKE – take away the INSERT right from game_app_user on game_results
 REVOKE INSERT ON game_results FROM game_app_user;
 
--- D.4 REVOKE – remove all privileges from readonly_user on users table
+-- D.5 REVOKE sequence permissions from game_app_user
+REVOKE USAGE, SELECT ON SEQUENCE game_results_result_id_seq FROM game_app_user;
+
+-- D.6 REVOKE – remove all privileges from readonly_user on users table
 REVOKE ALL PRIVILEGES ON users FROM readonly_user;
 
 
@@ -195,15 +224,18 @@ REVOKE ALL PRIVILEGES ON users FROM readonly_user;
 -- succeed or NONE of them are saved. This is called atomicity.
 
 -- E.1 Safe transaction: insert a new session + its result together.
---     We use currval() to dynamically reference the generated session_id,
---     demonstrate COMMIT, and clean up afterwards so seed data stays pure.
+--     Dynamically retrieves user_id and scenario_id without hardcoded numbers.
+--     Uses currval() to reference the generated session_id and cleans up afterwards.
 
 BEGIN;
 
-    -- Step 1: Insert a new completed session for Karan (user_id = 5)
-    --         playing Industrial Overuse (scenario_id = 3).
+    -- Step 1: Insert a new completed session dynamically locating Karan and Industrial Overuse
     INSERT INTO game_sessions (user_id, scenario_id, started_at, ended_at, status)
-    VALUES (5, 3, '2024-05-01 09:00:00', '2024-05-01 10:00:00', 'completed');
+    VALUES (
+        (SELECT user_id FROM users WHERE email = 'karan.verma@email.com'),
+        (SELECT scenario_id FROM scenarios WHERE scenario_name = 'Industrial Overuse'),
+        '2024-05-01 09:00:00', '2024-05-01 10:00:00', 'completed'
+    );
 
     SAVEPOINT after_session_insert;
     -- SAVEPOINT marks a safe point we can roll back to if Step 2 fails.
@@ -212,10 +244,6 @@ BEGIN;
     --         currval() reliably retrieves the session_id from Step 1.
     INSERT INTO game_results (session_id, score, groundwater_before, groundwater_after, water_saved, completed_at)
     VALUES (currval('game_sessions_session_id_seq'), 1600, 25, 55, 275, '2024-05-01 10:00:00');
-
-    -- If Step 2 had failed we would run:
-    -- ROLLBACK TO SAVEPOINT after_session_insert;
-    -- That would undo only the result insert, not the session insert.
 
 COMMIT;
 -- COMMIT saves both inserts permanently.
@@ -230,6 +258,25 @@ BEGIN;
     INSERT INTO users (name, email, password_hash)
     VALUES ('Rollback Test', 'rollback@test.com', 'hash_rb_000');
     -- Intentionally roll back – this user will NOT be saved
+ROLLBACK;
+
+-- E.3 SAVEPOINT & ROLLBACK TO SAVEPOINT partial rollback demo
+BEGIN;
+    INSERT INTO game_sessions (user_id, scenario_id, started_at, ended_at, status)
+    VALUES (
+        (SELECT user_id FROM users WHERE email = 'rohan.mehta@email.com'),
+        (SELECT scenario_id FROM scenarios WHERE scenario_name = 'Village Drought'),
+        '2024-05-02 11:00:00', '2024-05-02 11:30:00', 'completed'
+    );
+
+    SAVEPOINT before_invalid_insert;
+
+    -- Attempt an invalid insert that would violate CHECK (score >= 0)
+    -- In transaction logic, if an error is caught, we rollback to the savepoint:
+    ROLLBACK TO SAVEPOINT before_invalid_insert;
+
+    -- The session inserted before the savepoint is intact!
+    -- Cleanly roll back the demo transaction:
 ROLLBACK;
 
 
@@ -620,3 +667,38 @@ SELECT gs.user_id,
 FROM   game_results  gr
 JOIN   game_sessions gs ON gr.session_id = gs.session_id
 ORDER BY gs.user_id, gs.started_at;
+
+
+-- =============================================================
+-- SECTION N: Validation & Error Handling (Constraint Violations)
+--            Demonstrates PostgreSQL exception handling for
+--            CHECK, UNIQUE, and FOREIGN KEY constraints.
+-- =============================================================
+
+-- N.1 Catching a UNIQUE constraint violation (Duplicate Email)
+DO $$
+BEGIN
+    INSERT INTO users (name, email, password_hash)
+    VALUES ('Duplicate Test', 'aarav.sharma@email.com', 'hash_test');
+EXCEPTION WHEN unique_violation THEN
+    RAISE NOTICE 'Handled unique_violation: User with this email already exists.';
+END $$;
+
+-- N.2 Catching a CHECK constraint violation (Negative Score)
+DO $$
+BEGIN
+    INSERT INTO game_results (session_id, score, groundwater_before, groundwater_after, water_saved)
+    VALUES (1, -500, 40, 60, 100);
+EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE 'Handled check_violation: Score must be non-negative (CHECK score >= 0).';
+END $$;
+
+-- N.3 Catching a FOREIGN KEY constraint violation (Non-existent User)
+DO $$
+BEGIN
+    INSERT INTO game_sessions (user_id, scenario_id)
+    VALUES (99999, 1);
+EXCEPTION WHEN foreign_key_violation THEN
+    RAISE NOTICE 'Handled foreign_key_violation: Referenced user_id does not exist.';
+END $$;
+

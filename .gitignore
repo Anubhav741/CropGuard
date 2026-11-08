@@ -12,3 +12,7 @@ UserSettings/
 *.sln
 unity-game/unity-game.sln
 unity-game/ProjectSettings/Packages/com.unity.testtools.codecoverage/
+node_modules/
+database/node_modules/
+.env
+database/.env

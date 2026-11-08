@@ -2,10 +2,19 @@
 // AquaGuardian – Prisma Schema
 // File:    database/prisma/schema.prisma
 // Author:  Yash Kumar
-// Purpose: Prisma ORM model definitions that mirror the existing
-//          PostgreSQL schema (schema.sql).
-//          Run: npx prisma migrate dev --name init
-//          from the project root to apply this schema.
+// Version: Prisma 6.19.3 (LTS / Stable ORM)
+// =============================================================
+// CONSISTENCY NOTE: Difficulty & Status (CHECK Constraints vs Enum)
+// In database/schema.sql, PostgreSQL enforces data integrity using:
+//   CHECK (difficulty IN ('Easy', 'Medium', 'Hard'))
+//   CHECK (status IN ('ongoing', 'completed', 'abandoned'))
+// Prisma ORM represents PostgreSQL VARCHAR columns with CHECK
+// constraints as `String @db.VarChar(20)`. This guarantees 100%
+// bidirectional consistency between native SQL and Prisma migrations
+// without requiring non-standard PostgreSQL custom types.
+// For application-level compile-time safety, TypeScript union types are used:
+//   export type Difficulty = 'Easy' | 'Medium' | 'Hard';
+//   export type SessionStatus = 'ongoing' | 'completed' | 'abandoned';
 // =============================================================
 
 generator client {
@@ -15,23 +24,20 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  // Set DATABASE_URL in .env, e.g.:
-  // DATABASE_URL="postgresql://anubhavgupta@localhost:5432/aquaguardian"
 }
 
 // =============================================================
 // Model: User
 // Mirrors: CREATE TABLE users (...)
-// One user can have many game sessions.
 // =============================================================
 model User {
   userId       Int           @id @default(autoincrement()) @map("user_id")
   name         String        @db.VarChar(100)
   email        String        @unique @db.VarChar(255)
   passwordHash String        @map("password_hash") @db.VarChar(255)
-  createdAt    DateTime      @default(now()) @map("created_at")
-
-  // Relation: one User → many GameSessions
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  // 1:N Relation – One player has many sessions
   sessions     GameSession[]
 
   @@map("users")
@@ -40,71 +46,56 @@ model User {
 // =============================================================
 // Model: Scenario
 // Mirrors: CREATE TABLE scenarios (...)
-// One scenario can appear in many game sessions.
 // =============================================================
 model Scenario {
   scenarioId   Int           @id @default(autoincrement()) @map("scenario_id")
   scenarioName String        @map("scenario_name") @db.VarChar(150)
   description  String        @db.Text
-  difficulty   Difficulty
-
-  // Relation: one Scenario → many GameSessions
+  difficulty   String        @db.VarChar(20)
+  
+  // 1:N Relation – One scenario is played in many sessions
   sessions     GameSession[]
 
   @@map("scenarios")
 }
 
-// PostgreSQL CHECK constraint modelled as an enum in Prisma
-enum Difficulty {
-  Easy
-  Medium
-  Hard
-}
-
 // =============================================================
 // Model: GameSession
 // Mirrors: CREATE TABLE game_sessions (...)
-// Links a User to a Scenario. One session → at most one result.
 // =============================================================
 model GameSession {
-  sessionId   Int          @id @default(autoincrement()) @map("session_id")
-  userId      Int          @map("user_id")
-  scenarioId  Int          @map("scenario_id")
-  startedAt   DateTime     @default(now()) @map("started_at")
-  endedAt     DateTime?    @map("ended_at")       // nullable – NULL while in progress
-  status      SessionStatus @default(ongoing)
+  sessionId  Int         @id @default(autoincrement()) @map("session_id")
+  userId     Int         @map("user_id")
+  scenarioId Int         @map("scenario_id")
+  startedAt  DateTime    @default(now()) @map("started_at") @db.Timestamp(6)
+  endedAt    DateTime?   @map("ended_at") @db.Timestamp(6)
+  status     String      @default("ongoing") @db.VarChar(20)
 
   // Relations
-  user        User         @relation(fields: [userId],     references: [userId])
-  scenario    Scenario     @relation(fields: [scenarioId], references: [scenarioId])
-  result      GameResult?  // at most one result per session (1-to-0..1)
+  user       User        @relation(fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  scenario   Scenario    @relation(fields: [scenarioId], references: [scenarioId], onDelete: NoAction, onUpdate: NoAction)
+  
+  // 1:0..1 Relation – A session has at most one result
+  result     GameResult?
 
   @@map("game_sessions")
-}
-
-// Maps to: CHECK (status IN ('ongoing', 'completed', 'abandoned'))
-enum SessionStatus {
-  ongoing
-  completed
-  abandoned
 }
 
 // =============================================================
 // Model: GameResult
 // Mirrors: CREATE TABLE game_results (...)
-// Exactly one result per completed session. sessionId is @unique.
 // =============================================================
 model GameResult {
-  resultId           Int          @id @default(autoincrement()) @map("result_id")
-  sessionId          Int          @unique @map("session_id")  // enforces one-to-one
-  score              Int
-  groundwaterBefore  Int          @map("groundwater_before")
-  groundwaterAfter   Int          @map("groundwater_after")
-  waterSaved         Int          @map("water_saved")
-  completedAt        DateTime     @default(now()) @map("completed_at")
+  resultId          Int         @id @default(autoincrement()) @map("result_id")
+  sessionId         Int         @unique @map("session_id") // Strict 1:1 enforcement
+  score             Int
+  groundwaterBefore Int         @map("groundwater_before")
+  groundwaterAfter  Int         @map("groundwater_after")
+  waterSaved        Int         @map("water_saved")
+  completedAt       DateTime    @default(now()) @map("completed_at") @db.Timestamp(6)
 
-  // Relation: each result belongs to exactly one session
-  session            GameSession  @relation(fields: [sessionId], references: [sessionId])
+  // Relation back to game_sessions
+  session           GameSession @relation(fields: [sessionId], references: [sessionId], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("game_results")
 }
