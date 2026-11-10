@@ -141,7 +141,7 @@ public sealed class VillageWorld
     public Station Nearest() { Station best=null; float distance=3.3f; foreach(var s in stations) { float d=Vector2.Distance(new Vector2(avatar.position.x,avatar.position.z),new Vector2(s.position.x,s.position.z)); if(d<distance) { best=s; distance=d; } } return best; }
     public void Visuals(VillageSimulation sim,float clock) {
         float healthy=Mathf.Clamp01((sim.growth*.65f+sim.health*.35f-15)/80);
-        groundMaterial.color=Color.Lerp(dry,green,healthy);
+        groundMaterial.color=Color.Lerp(dry,green,sim.finished&&!sim.won?0:healthy);
         float fill=sim.pond/100; water.localScale=new Vector3(2+7*fill,.02f,1.5f+5.5f*fill); water.position=new Vector3(-13,.18f+fill*.12f,5);
         waterMaterial.color=Color.Lerp(new Color(.46f,.39f,.22f),blue,sim.quality/100);
         gate.localPosition=new Vector3(-13,sim.gate?1.7f:.8f,9);
@@ -149,7 +149,7 @@ public sealed class VillageWorld
         for(int i=0;i<crops.Count;i++) { float h=.12f+sim.crop/100*1.4f; crops[i].localScale=new Vector3(sim.millet?.23f:.4f,h,sim.millet?.23f:.4f); var p=crops[i].position; p.y=.21f+h*.5f; crops[i].position=p; crops[i].rotation=Quaternion.Euler(Mathf.Sin(clock*2+i)*3,0,0); }
         dripLines.gameObject.SetActive(sim.irrigation==VillageSimulation.Irrigation.Drip);
         spill.gameObject.SetActive(sim.pollution&&!sim.pollutionHandled);
-        for(int i=0;i<houses.Count;i++) { bool visible=i<2 || sim.growth>=(i-1)*15+15; houses[i].gameObject.SetActive(visible); float h=sim.health<25?.5f:1; houses[i].localScale=new Vector3(1,h,1); }
+        for(int i=0;i<houses.Count;i++) { bool visible=i<2 || sim.growth>=(i-1)*15+15; houses[i].gameObject.SetActive(visible); float h=(sim.health<25 || (sim.finished&&!sim.won))?.35f:1; houses[i].localScale=new Vector3(1,h,1); }
         for(int i=0;i<saplings.Count;i++) saplings[i].localScale=Vector3.one*(sim.trees?.9f:.25f);
         for(int i=0;i<villagers.Count;i++) { var p=villagers[i].position; p.x=-6+i*5+Mathf.Sin(clock*.3f+i)*1.3f; villagers[i].position=p; }
         pumpRotor.rotation=Quaternion.Euler(sim.irrigation==VillageSimulation.Irrigation.GroundwaterPump?Mathf.Sin(clock*10)*35:0,0,0);

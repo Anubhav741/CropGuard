@@ -10,7 +10,7 @@ public sealed class VillageSimulation
     public enum Action { StoreRain, ReleaseRain, Recharge, Drip, Flood, PumpFarm, PlantMillet, Harvest, SupplyPond, SupplyWell, Ration, RepairLeak, CleanPollution, IgnorePollution, PlantTrees }
     public float time, pond = 8, aquifer = 43, health = 75, growth = 10, moisture = 12, crop = 8, quality = 100;
     public int coins = 45, score, harvests;
-    public bool gate, recharge, millet, leakFixed, pollution, pollutionHandled, trees, capturedRain, finished, won;
+    public bool dripInstalled, gate, recharge, millet, leakFixed, pollution, pollutionHandled, trees, capturedRain, finished, won;
     public Irrigation irrigation;
     public Supply supply = Supply.Ration;
     public string lastMessage = "The village is dry. Clouds are coming. Find the pond and prepare to capture rain.";
@@ -49,8 +49,8 @@ public sealed class VillageSimulation
             case Action.Drip:
                 if(irrigation==Irrigation.Drip) return Say("Drip irrigation is already running.",false);
                 if(pond<4) return Say("The pond needs at least 4 water units. Catch rain first, or use the pump carefully.",false);
-                if(coins<12) return Say("Drip lines cost 12 coins. Harvest a crop first.",false);
-                coins-=12; irrigation=Irrigation.Drip; score+=35; return Say("Drip lines installed. Water goes to roots with little waste.");
+                if(!dripInstalled && coins<12) return Say("Drip lines cost 12 coins. Harvest a crop first.",false);
+                if(!dripInstalled) { coins-=12; score+=35; dripInstalled=true; } irrigation=Irrigation.Drip; return Say("Drip lines installed. Water goes to roots with little waste.");
             case Action.Flood:
                 if(pond<4) return Say("There is not enough pond water to flood the field.",false);
                 irrigation=Irrigation.Flood; return Say("Flood irrigation started. Crops receive water, but the pond drains quickly.");

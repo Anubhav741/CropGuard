@@ -12,7 +12,7 @@ public sealed class VillageGame : MonoBehaviour
     VillageWorld.Station nearby, opened;
     readonly HashSet<VillageWorld.Place> visited=new HashSet<VillageWorld.Place>();
     float uiScale=1, offsetX, offsetY, notificationUntil;
-    string notification="", speaker="MEERA / VILLAGE ELDER";
+    string interactionFeedback="", notification="", speaker="MEERA / VILLAGE ELDER";
     GUIStyle title, body, small, caption, button, centered;
     Texture2D solid, buttonNormal, buttonHover;
     Color navy=new Color(.055f,.15f,.19f), cream=new Color(.99f,.97f,.89f), teal=new Color(.08f,.44f,.45f), gold=new Color(.98f,.74f,.29f);
@@ -45,14 +45,14 @@ public sealed class VillageGame : MonoBehaviour
         if(Input.GetMouseButtonDown(0) && !OverUI(Input.mousePosition)) { Ray ray=World.camera.ScreenPointToRay(Input.mousePosition); Plane plane=new Plane(Vector3.up,Vector3.zero); float distance; if(plane.Raycast(ray,out distance)) { World.walkTarget=ray.GetPoint(distance); World.walking=true; } }
         World.Move(new Vector2(Input.GetAxisRaw("Horizontal"),Input.GetAxisRaw("Vertical")),Time.deltaTime);
         nearby=World.Nearest();
-        if(nearby!=null && !visited.Contains(nearby.place)) { visited.Add(nearby.place); opened=nearby; World.walking=false; }
-        else if(nearby!=null && Input.GetKeyDown(KeyCode.E)) { opened=nearby; World.walking=false; }
+        if(nearby!=null && !visited.Contains(nearby.place)) { visited.Add(nearby.place); opened=nearby; interactionFeedback=""; World.walking=false; }
+        else if(nearby!=null && Input.GetKeyDown(KeyCode.E)) { opened=nearby; interactionFeedback=""; World.walking=false; }
         World.Visuals(Sim,Time.time);
     }
     bool OverUI(Vector3 mouse) { var p=new Vector2((mouse.x-offsetX)/uiScale,(Screen.height-mouse.y-offsetY)/uiScale); return p.y<100 || p.y>605 || (p.x<330 && p.y<255) || (p.x>1060 && p.y<335); }
     void Execute(Command cmd) {
         bool ok=Sim.Act(cmd.action); Notify(Sim.lastMessage,ok?"YOUR ACTION CHANGED THE VILLAGE":"CHECK YOUR RESOURCES");
-        if(ok) opened=null;
+        if(ok) opened=null; else interactionFeedback=Sim.lastMessage;
         World.Visuals(Sim,Time.time);
     }
     List<Command> Commands(VillageWorld.Place place) {
@@ -63,7 +63,7 @@ public sealed class VillageGame : MonoBehaviour
                 a.Add(new Command(VillageSimulation.Action.Recharge,Sim.recharge?"Recharge bed installed":"Build recharge bed  /  18 coins")); break;
             case VillageWorld.Place.Farm:
                 if(Sim.Ready) a.Add(new Command(VillageSimulation.Action.Harvest,"Harvest food  /  earn 28 coins"));
-                a.Add(new Command(VillageSimulation.Action.Drip,"Use drip lines from pond  /  12 coins"));
+                a.Add(new Command(VillageSimulation.Action.Drip,Sim.dripInstalled?"Use installed drip lines":"Install drip lines from pond  /  12 coins"));
                 a.Add(new Command(VillageSimulation.Action.Flood,"Flood field from pond  /  high water use"));
                 a.Add(new Command(VillageSimulation.Action.PumpFarm,"Pump groundwater  /  lowers aquifer")); break;
             case VillageWorld.Place.Seeds:
@@ -162,7 +162,8 @@ public sealed class VillageGame : MonoBehaviour
     }
     void DrawInteraction() {
         Panel(new Rect(330,145,620,485)); GUI.Label(new Rect(360,168,540,35),opened.name+"  /  WATER STATION",caption);
-        GUI.Label(new Rect(360,209,540,136),Context(opened.place),body);
+        GUI.Label(new Rect(360,209,540,110),Context(opened.place),body);
+        GUI.Label(new Rect(360,320,540,32),interactionFeedback,small);
         var actions=Commands(opened.place);
         for(int i=0;i<actions.Count;i++) if(GUI.Button(new Rect(360,355+i*50,540,43),(i+1)+"  "+actions[i].label,button)) { Execute(actions[i]); break; }
         if(opened!=null && GUI.Button(new Rect(360,575,540,36),"Keep exploring  /  E or Esc",button))opened=null;
