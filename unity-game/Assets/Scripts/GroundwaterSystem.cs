@@ -27,6 +27,7 @@ public class GroundwaterSystem : MonoBehaviour
     private int actionsUsed = 0;
     private int score = 0;
     private bool gameFinished = false;
+    private string lastActionMessage = "";
 
     void Start()
     {
@@ -80,8 +81,7 @@ public class GroundwaterSystem : MonoBehaviour
 
         actionsUsed++;
 
-        if (groundwaterMessage != null)
-            groundwaterMessage.text = message;
+        lastActionMessage = message;
 
         if (actionsUsed >= totalActions)
             FinishGame();
@@ -167,15 +167,15 @@ public class GroundwaterSystem : MonoBehaviour
 
         if (groundwaterMessage != null)
         {
+            string status;
             if (groundwaterLevel >= 60)
-                groundwaterMessage.text =
-                    "Groundwater is at a healthy level";
+                status = "Groundwater is at a healthy level";
             else if (groundwaterLevel >= 30)
-                groundwaterMessage.text =
-                    "Warning: Groundwater is decreasing!";
+                status = "Warning: Groundwater is decreasing!";
             else
-                groundwaterMessage.text =
-                    "Critical: Save groundwater!";
+                status = "Critical: Save groundwater!";
+            groundwaterMessage.text = string.IsNullOrEmpty(lastActionMessage)
+                ? status : lastActionMessage + " " + status;
         }
         else
         {
