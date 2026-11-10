@@ -21,6 +21,10 @@ public static class AquaChecks
         }
         var poor = new AquaSimulation(AquaSimulation.Scenario.Normal); poor.money = 0;
         string ignored; Assert(!poor.Apply(AquaSimulation.Action.Recharge, out ignored) && poor.turn == 0, "Unaffordable action consumed a turn");
+        var polluted = new AquaSimulation(AquaSimulation.Scenario.Contamination);
+        Assert(polluted.Apply(AquaSimulation.Action.Treat, out ignored) && polluted.pollution == 35, "Treatment did not reduce pollution");
+        int saved = polluted.saved;
+        Assert(polluted.Apply(AquaSimulation.Action.Diversify, out ignored) && polluted.saved > saved, "Crop diversification did not save water");
         Debug.Log("AquaGuardian simulation checks passed");
     }
 }

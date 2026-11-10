@@ -6,23 +6,23 @@ using UnityEngine.SceneManagement;
 // Self-contained educational model. Values are gameplay units, not hydrological measurements.
 public sealed class AquaSimulation
 {
-    public enum Scenario { Normal, Drought, HeavyRain }
-    public enum Action { Harvest, Recharge, Irrigation, Extract }
+    public enum Scenario { Normal, Drought, HeavyRain, Contamination }
+    public enum Action { Harvest, Recharge, Irrigation, Extract, Diversify, Treat }
     public const int Turns = 6;
     public Scenario scenario;
-    public int water, money, score, turn, saved, initialWater;
+    public int water, money, score, turn, saved, initialWater, pollution;
     public bool Finished => turn >= Turns || water <= 0;
     public AquaSimulation(Scenario selected)
     {
         scenario = selected;
         water = selected == Scenario.Drought ? 45 : selected == Scenario.HeavyRain ? 75 : 60;
-        initialWater = water; money = 100;
+        initialWater = water; money = 100; pollution = selected == Scenario.Contamination ? 60 : 10;
     }
     public bool Apply(Action action, out string message)
     {
         message = "";
         if (Finished) { message = "The challenge is complete."; return false; }
-        int cost = action == Action.Harvest ? 20 : action == Action.Recharge ? 30 : action == Action.Irrigation ? 25 : 0;
+        int cost = action == Action.Harvest ? 20 : action == Action.Recharge ? 30 : action == Action.Irrigation ? 25 : action == Action.Diversify ? 20 : action == Action.Treat ? 25 : 0;
         if (money < cost) { message = "Not enough money for this action."; return false; }
         money -= cost;
         int rain = scenario == Scenario.Drought ? 1 : scenario == Scenario.HeavyRain ? 7 : 4;
@@ -32,25 +32,30 @@ public sealed class AquaSimulation
             case Action.Harvest: water += 8; saved += 8; score += 80; message = "Rainwater captured and stored."; break;
             case Action.Recharge: water += 14; saved += 14; score += 100; message = "Recharge pit replenished the aquifer."; break;
             case Action.Irrigation: demand = 3; saved += 5; score += 90; message = "Efficient irrigation reduced demand."; break;
-            case Action.Extract: water -= 10; money += 20; score = Math.Max(0, score - 25); message = "Extra pumping earned money but depleted water."; break;
+            case Action.Extract: water -= 10; money += 20; score = Math.Max(0, score - 25); message = "Extra pumping earned coins but depleted water."; break;
+            case Action.Diversify: demand = 4; saved += 4; score += 85; message = "Growing less thirsty crops saves water!"; break;
+            case Action.Treat: pollution = Math.Max(0, pollution - 25); score += 75; message = "Cleaning pollution protects the aquifer!"; break;
         }
         water = Math.Max(0, Math.Min(100, water + rain - demand));
         turn++;
         if (Finished) score += water * 5;
         return true;
     }
-    public string Rating => water >= 70 ? "Excellent" : water >= 45 ? "Good" : water >= 25 ? "At risk" : "Critical";
+    public string Rating => pollution >= 40 ? "At risk" : water >= 70 ? "Excellent" : water >= 45 ? "Good" : water >= 25 ? "At risk" : "Critical";
 }
 
 public class AquaGame : MonoBehaviour
 {
-    enum Screen { Menu, Playing, Result, Learning }
+    enum Screen { Menu, Story, Playing, Result, Learning }
     Screen screen = Screen.Menu;
     AquaSimulation game;
     string message = "Choose a scenario to begin.";
     string learning = "";
     GUIStyle title, text, button, box;
     bool initialized;
+    Vector2 scroll;
+    AquaSimulation.Scenario selectedScenario;
+    CharacterController player;
     [Serializable] public class ResultData { public string scenario; public int score, groundwaterBefore, groundwaterAfter, waterSaved; public string sustainabilityRating; }
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")] private static extern void AquaGuardianResult(string json);
@@ -68,6 +73,7 @@ public class AquaGame : MonoBehaviour
         foreach (var old in FindObjectsByType<WaterSourceInteraction>(FindObjectsSortMode.None)) old.enabled = false;
         foreach (var elder in FindObjectsByType<ElderDialogue>(FindObjectsSortMode.None)) elder.enabled = false;
         var oldSystem = FindFirstObjectByType<GroundwaterSystem>(); if (oldSystem) oldSystem.enabled = false;
+        var playerObject = GameObject.Find("Player"); if (playerObject) player = playerObject.GetComponent<CharacterController>();
         DecorateVillage();
     }
     static void DecorateVillage()
@@ -109,7 +115,9 @@ public class AquaGame : MonoBehaviour
         var backdrop = new Texture2D(1, 1); backdrop.SetPixel(0, 0, new Color(.035f, .10f, .16f, .95f)); backdrop.Apply();
         box.normal.background = backdrop; initialized = true;
     }
-    void Begin(AquaSimulation.Scenario s) { game = new AquaSimulation(s); message = "Balance village demand with conservation. You have six turns."; screen = Screen.Playing; }
+    void Begin(AquaSimulation.Scenario s) { selectedScenario = s; screen = Screen.Story; scroll = Vector2.zero; }
+    void StartChallenge() { game = new AquaSimulation(selectedScenario); message = "Help the village make six wise choices!"; screen = Screen.Playing; scroll = Vector2.zero; }
+    void Move(Vector3 direction) { if (player) player.Move(direction * 4f * Time.deltaTime); }
     void Choose(AquaSimulation.Action a)
     {
         if (!game.Apply(a, out message)) return;
@@ -131,6 +139,7 @@ public class AquaGame : MonoBehaviour
         GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1));
         float w = Mathf.Min(490, ScreenWidth() / scale - 32), h = ScreenHeight() / scale - 32;
         GUILayout.BeginArea(new Rect(16, 16, w, h), box);
+        scroll = GUILayout.BeginScrollView(scroll);
         GUILayout.Label("AQUAGUARDIAN", title);
         if (screen == Screen.Menu)
         {
@@ -138,18 +147,37 @@ public class AquaGame : MonoBehaviour
             if (GUILayout.Button("Normal rainfall", button)) Begin(AquaSimulation.Scenario.Normal);
             if (GUILayout.Button("Drought", button)) Begin(AquaSimulation.Scenario.Drought);
             if (GUILayout.Button("Heavy rainfall", button)) Begin(AquaSimulation.Scenario.HeavyRain);
+            if (GUILayout.Button("Pollution alert", button)) Begin(AquaSimulation.Scenario.Contamination);
             if (GUILayout.Button("Explore Q-learning", button)) { Train(); screen = Screen.Learning; }
             GUILayout.Label("Move with WASD or arrow keys. Values are educational game units.", text);
+        }
+        else if (screen == Screen.Story)
+        {
+            GUILayout.Label("A MESSAGE FROM THE VILLAGE ELDER", text);
+            GUILayout.Label("Welcome, young water guardian! Our village needs your help. Wells and farms depend on groundwater hidden beneath our feet. Your choices can protect it for everyone.", text);
+            GUILayout.Label("In " + selectedScenario + ", collect rain, recharge the ground, save water on farms and keep it clean. Every choice has a cost and a consequence!", text);
+            if (GUILayout.Button("Let's help the village!", button)) StartChallenge();
+            if (GUILayout.Button("Choose another mission", button)) screen = Screen.Menu;
         }
         else if (screen == Screen.Playing)
         {
             GUILayout.Label(game.scenario + "   |   Turn " + (game.turn + 1) + " / " + AquaSimulation.Turns, text);
             GUILayout.Label("Groundwater: " + game.water + "%    Money: " + game.money + "    Score: " + game.score, text);
+            GUILayout.Label("Pollution: " + game.pollution + "%", text);
             GUILayout.Label(message, text);
             if (GUILayout.Button("Harvest rainwater  •  cost 20", button)) Choose(AquaSimulation.Action.Harvest);
             if (GUILayout.Button("Build recharge pit  •  cost 30", button)) Choose(AquaSimulation.Action.Recharge);
             if (GUILayout.Button("Efficient irrigation  •  cost 25", button)) Choose(AquaSimulation.Action.Irrigation);
+            if (GUILayout.Button("Grow less thirsty crops  •  cost 20", button)) Choose(AquaSimulation.Action.Diversify);
+            if (GUILayout.Button("Clean up pollution  •  cost 25", button)) Choose(AquaSimulation.Action.Treat);
             if (GUILayout.Button("Extra pumping  •  earn 20", button)) Choose(AquaSimulation.Action.Extract);
+            GUILayout.Label("Explore: WASD / arrows or hold the buttons", text);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.RepeatButton("←", button)) Move(Vector3.left);
+            if (GUILayout.RepeatButton("↑", button)) Move(Vector3.forward);
+            if (GUILayout.RepeatButton("↓", button)) Move(Vector3.back);
+            if (GUILayout.RepeatButton("→", button)) Move(Vector3.right);
+            GUILayout.EndHorizontal();
             if (GUILayout.Button("Return to menu", button)) screen = Screen.Menu;
         }
         else if (screen == Screen.Result)
@@ -166,6 +194,7 @@ public class AquaGame : MonoBehaviour
             if (GUILayout.Button("Train again", button)) Train();
             if (GUILayout.Button("Back", button)) screen = Screen.Menu;
         }
+        GUILayout.EndScrollView();
         GUILayout.EndArea();
     }
     static int ScreenWidth() => UnityEngine.Screen.width;
