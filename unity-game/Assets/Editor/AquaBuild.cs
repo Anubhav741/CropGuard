@@ -6,10 +6,10 @@ using UnityEngine;
 
 public static class AquaBuild
 {
-    [MenuItem("AquaGuardian/Build WebGL")]
+    [MenuItem("Jalrakshak/Build WebGL")]
     public static void BuildFromMenu()
     {
-        string output = EditorUtility.SaveFolderPanel("Choose WebGL output folder", "", "AquaGuardianWebGL");
+        string output = EditorUtility.SaveFolderPanel("Choose WebGL output folder", "", "JalrakshakWebGL");
         if (!string.IsNullOrEmpty(output)) Build(output);
     }
     // Run with -executeMethod AquaBuild.BuildWebGL -aquaguardianOutput /absolute/path
@@ -25,6 +25,6 @@ public static class AquaBuild
         var options = new BuildPlayerOptions { scenes = new[] { "Assets/Scenes/Village.unity" }, locationPathName = output, target = BuildTarget.WebGL };
         BuildReport report = BuildPipeline.BuildPlayer(options);
         if (report.summary.result != BuildResult.Succeeded) throw new Exception("WebGL build failed: " + report.summary.result);
-        Debug.Log("AquaGuardian WebGL build succeeded: " + output);
+        Debug.Log("Jalrakshak WebGL build succeeded: " + output);
     }
 }
