@@ -9,9 +9,8 @@
 //   CHECK (difficulty IN ('Easy', 'Medium', 'Hard'))
 //   CHECK (status IN ('ongoing', 'completed', 'abandoned'))
 // Prisma ORM represents PostgreSQL VARCHAR columns with CHECK
-// constraints as `String @db.VarChar(20)`. This guarantees 100%
-// bidirectional consistency between native SQL and Prisma migrations
-// without requiring non-standard PostgreSQL custom types.
+// constraints as `String @db.VarChar(20)`, but does not encode the CHECK.
+// Migration 1_restore_checks explicitly installs the CHECK constraints.
 // For application-level compile-time safety, TypeScript union types are used:
 //   export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 //   export type SessionStatus = 'ongoing' | 'completed' | 'abandoned';
