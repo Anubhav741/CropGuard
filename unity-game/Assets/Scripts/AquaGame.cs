@@ -60,7 +60,6 @@ public class AquaGame : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")] private static extern void AquaGuardianResult(string json);
 #endif
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
         if (SceneManager.GetActiveScene().name != "Village" || FindFirstObjectByType<AquaGame>() != null) return;

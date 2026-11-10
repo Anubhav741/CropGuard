@@ -1,6 +1,6 @@
 # AquaGuardian Unity game
 
-Open `unity-game` with Unity 6000.5.10f1 and open `Assets/Scenes/Village.unity`. Press Play. The village starts with a menu for normal rainfall, drought, heavy rainfall and contamination. WASD/arrow keys or the on-screen directional buttons move the player; use the on-screen buttons for decisions. Each mission begins with an elder’s introduction. Each scenario lasts up to six turns, or ends early if water reaches zero. The Q-learning menu trains a small tabular agent in the same simulation. Game units and rewards are illustrative, not scientific measurements.
+Open `unity-game` with Unity 6000.5.10f1, open `Assets/Scenes/Village.unity`, and press Play. Explore the village and complete four hands-on tasks: collect rain, build a recharge pit, use drip irrigation and choose millet, and remove litter near the water. Use WASD or arrow keys to move and E or Space to interact; on-screen controls are also provided. The environment is generated when the scene runs. Water, savings and points are illustrative game values, not scientific measurements.
 
 ## WebGL
 
@@ -18,7 +18,7 @@ Serve the build through a web server; browsers cannot reliably run Unity WebGL b
 The build emits `aquaguardian:result` as a browser `CustomEvent` on `window` when a game ends. Its `detail` contains, for example:
 
 ```json
-{"scenario":"Drought","score":545,"groundwaterBefore":45,"groundwaterAfter":39,"waterSaved":56,"sustainabilityRating":"At risk"}
+{"scenario":"VillageAdventure","score":1570,"groundwaterBefore":40,"groundwaterAfter":74,"waterSaved":70,"sustainabilityRating":"Excellent"}
 ```
 
 The host page should install a listener before loading the Unity build:
@@ -35,4 +35,4 @@ This event does not itself save a result. The frontend/backend must provide auth
 
 ## Scope
 
-The game currently includes a tabular Q-learning demonstration. PPO, imitation learning, VR and backend integration are not implemented. The prototype dialogue and interaction scripts remain in the project, but the current gameplay uses on-screen decision buttons.
+This is an early playable adventure, with sequential missions rather than a dynamic groundwater simulation. The game sends a result event but does not implement online registration, persistent scores or certificates. Mobile deployment and the full browser-to-backend flow still need verification. Earlier prototype scripts remain in the project but are not the active game.
