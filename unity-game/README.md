@@ -1,6 +1,6 @@
 # AquaGuardian Unity game
 
-Open `unity-game` with Unity 6000.5.10f1 and open `Assets/Scenes/Village.unity`. Press Play. The village starts with a menu for normal rainfall, drought and heavy rainfall. WASD/arrow keys move the player; use the on-screen buttons for decisions. Each scenario lasts up to six turns, or ends early if water reaches zero. The Q-learning menu trains a small tabular agent in the same simulation. Game units and rewards are illustrative, not scientific measurements.
+Open `unity-game` with Unity 6000.5.10f1 and open `Assets/Scenes/Village.unity`. Press Play. The village starts with a menu for normal rainfall, drought, heavy rainfall and contamination. WASD/arrow keys or the on-screen directional buttons move the player; use the on-screen buttons for decisions. Each mission begins with an elder’s introduction. Each scenario lasts up to six turns, or ends early if water reaches zero. The Q-learning menu trains a small tabular agent in the same simulation. Game units and rewards are illustrative, not scientific measurements.
 
 ## WebGL
 
