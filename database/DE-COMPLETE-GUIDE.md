@@ -472,3 +472,26 @@ Exit Code: 0 (Success)
 
 ### Q10: Why use Prisma ORM alongside PostgreSQL?
 **Answer:** Prisma provides type-safe query generation, automated schema migrations, declarative relationship management, and transactional guarantees (`prisma.$transaction`) within Node.js/TypeScript backend services while eliminating SQL injection risks.
+
+
+### Migration integrity and validation note
+
+Prisma does not express PostgreSQL CHECK constraints in its schema language. The
+`1_restore_checks` migration adds the six domain checks from `schema.sql` after
+`0_init`. Existing invalid rows must be corrected before applying it. Applying
+only the original migration does not enforce these checks. Prisma schema
+validation alone does not verify the live database or execute queries.
+
+The transaction demonstration in `analytics.sql` uses a temporary table, executes
+COMMIT and ROLLBACK TO SAVEPOINT, and drops the table without changing project
+rows. A.6 filters completed sessions; A.7 returns the user ID; C.1 uses the user ID
+to make row numbering deterministic for tied scores.
+
+Additional isolated review: the baseline and CHECK migration were applied with
+`prisma migrate deploy` to a new disposable database; `prisma migrate status`
+reported the database up to date. The migrations were also applied directly,
+then the seed and full analytics file executed with `ON_ERROR_STOP=1`. All
+`queries.sql` sections except the role/permission DCL section were executed in a
+separate disposable database. DCL was not rerun because its role creation affects
+the entire PostgreSQL cluster. These checks do not verify the future web API or
+prove every possible database state is valid.
