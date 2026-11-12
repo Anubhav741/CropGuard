@@ -1,6 +1,7 @@
-// PROPOSAL ONLY: Pending alignment with the official DE database design.
-// Do not migrate a shared database until the DE owner approves this schema.
-generator client { provider = "prisma-client-js" }
+// CropGuard PostgreSQL schema. Apply migrations only to the intended database.
+generator client {
+  provider = "prisma-client-js"
+}
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
