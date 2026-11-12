@@ -16,7 +16,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        value: https://cropguard-rescue-741.craftycord.chatgpt.site
+        value: https://cropguard-rescue-741.craftycord.chatgpt.site,https://cropguard-08qk.onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: cropguard-db

@@ -8,7 +8,7 @@ import { z, ZodError } from 'zod';
 
 export function createApp({ db, jwtSecret, frontendUrl = 'http://localhost:5173' }) {
   if (!jwtSecret || jwtSecret.length < 32) throw new Error('JWT_SECRET must be at least 32 characters');
-  const app=express(); app.disable('x-powered-by'); app.use(helmet()); app.use(cors({origin:frontendUrl})); app.use(express.json({limit:'20kb'}));
+  const app=express(); app.disable('x-powered-by'); app.use(helmet()); app.use(cors({origin:frontendUrl.split(',').map(origin=>origin.trim()).filter(Boolean)})); app.use(express.json({limit:'20kb'}));
   const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
   const fail=(status,message)=>Object.assign(new Error(message),{status});
   const auth=wrap(async(req,res,next)=>{const h=req.get('authorization')||''; if(!h.startsWith('Bearer '))throw fail(401,'Authentication required'); let p; try{p=jwt.verify(h.slice(7),jwtSecret,{algorithms:['HS256']});}catch{throw fail(401,'Invalid or expired token');} const user=await db.user.findUnique({where:{id:p.sub},select:{id:true,name:true,email:true,createdAt:true}});if(!user)throw fail(401,'Invalid account');req.user=user;next();});
