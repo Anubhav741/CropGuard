@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import {PrismaClient} from '@prisma/client';
 import {createApp} from '../src/app.js';
+import jwt from 'jsonwebtoken';
 const db=new PrismaClient(); const app=createApp({db,jwtSecret:'a-test-secret-that-is-at-least-32-characters'});
 test('authentication, session validation, persistence, and leaderboard',async()=>{
  const email=`test-${Date.now()}@example.com`;let user;
@@ -11,6 +12,7 @@ test('authentication, session validation, persistence, and leaderboard',async()=
  r=await request(app).post('/api/auth/login').send({email,password:'password123'});assert.equal(r.status,200);
  r=await request(app).get('/api/auth/me').set('Authorization','Bearer invalid');assert.equal(r.status,401);
  r=await request(app).get('/api/game/stats');assert.equal(r.status,401);
+ const expired=jwt.sign({},'a-test-secret-that-is-at-least-32-characters',{subject:user.id,expiresIn:-1});r=await request(app).get('/api/auth/me').set('Authorization',`Bearer ${expired}`);assert.equal(r.status,401);
  r=await request(app).post('/api/game/start').set('Authorization',`Bearer ${token}`).send({levelId:2});assert.equal(r.status,403);
  r=await request(app).post('/api/game/start').set('Authorization',`Bearer ${token}`).send({levelId:1});assert.equal(r.status,201);const sessionId=r.body.sessionId;
  const result={sessionId,levelId:1,score:9999,cropsTreated:5,livesRemaining:3,duration:0,completed:true};
