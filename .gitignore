@@ -11,3 +11,10 @@ UserSettings/
 *.sln
 *.slnx
 .DS_Store
+node_modules/
+.env
+.env.*
+!.env.example
+frontend/dist/
+frontend/public/game/Build/
+frontend/public/game/TemplateData/
