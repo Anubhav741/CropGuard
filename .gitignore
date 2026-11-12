@@ -18,3 +18,7 @@ node_modules/
 frontend/dist/
 frontend/public/game/Build/
 frontend/public/game/TemplateData/
+
+# Unity standalone template is not the React entry point
+frontend/public/game/index.html
+frontend/public/game/TemplateData/

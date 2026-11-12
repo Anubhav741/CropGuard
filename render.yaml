@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: cropguard-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npx prisma generate
+    startCommand: npx prisma migrate deploy && node prisma/seed.js && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://cropguard-rescue-741.craftycord.chatgpt.site
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cropguard-db
+          property: connectionString
+databases:
+  - name: cropguard-db
+    plan: free
+    region: singapore
