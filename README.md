@@ -5,7 +5,7 @@
 
 **Explore the farm · Identify crop problems · Treat plants · Learn by playing**
 
-[Play the game](https://cropguard-08qk.onrender.com/) · [Leaderboard](https://cropguard-08qk.onrender.com/leaderboard) · [API health](https://cropguard-api-hyqt.onrender.com/api/health)
+[Play the game](https://cropguard-08qk.onrender.com/game) · [Leaderboard](https://cropguard-08qk.onrender.com/leaderboard) · [API health](https://cropguard-api-hyqt.onrender.com/api/health)
 
 Unity 2D / WebGL • React • Node.js & Express • Prisma • PostgreSQL
 
@@ -46,7 +46,7 @@ Recognizing crop-health problems and understanding the next step can be difficul
 
 ## 4. How to play
 
-1. Open the [live game](https://cropguard-08qk.onrender.com/). Choose **Get started** to create an account, **Log in**, or play as a guest.
+1. Open the [live game](https://cropguard-08qk.onrender.com/game). Choose **Get started** to create an account, **Log in**, or play as a guest.
 2. Select **Play game**, then **Play** in the Unity menu.
 3. Move toward a crop, inspect it and choose an answer. An incorrect answer costs one life; each level starts with three lives.
 4. After a correct answer, apply the solution to save the crop and earn points.
